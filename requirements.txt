@@ -1,8 +1,6 @@
 streamlit
 pandas
 plotly
-datetime
-re
 pypdf
 seaborn
 matplotlib
