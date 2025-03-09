@@ -173,24 +173,41 @@ def main_app():
             fig = px.bar(df, x="Month", y=selected_metrics, title="Monthly Financials")
             st.plotly_chart(fig)
 
-    # Tab 3: Compare Months
-    with tab3:
-        if not df.empty:
-            st.subheader("Compare Months")
-            months = sorted(df["Month"].unique())
-            month1 = st.selectbox("Select First Month", months, index=0, key="compare_month1")
-            month2 = st.selectbox("Select Second Month", months, index=1, key="compare_month2")
-            selected_fields = st.multiselect("Select Fields to Compare", FIELDS, default=["Nett Profit /(Loss)"], key="compare_fields")
+   # Tab 3: Compare Months
+with tab3:
+    if not df.empty:
+        st.subheader("Compare Months")
+        months = sorted(df["Month"].unique())
+        month1 = st.selectbox("Select First Month", months, index=0, key="compare_month1")
+        month2 = st.selectbox("Select Second Month", months, index=1, key="compare_month2")
+        selected_fields = st.multiselect("Select Fields to Compare", FIELDS, default=["Nett Profit /(Loss)"], key="compare_fields")
+        
+        try:
             data1 = df[df["Month"] == month1][selected_fields].iloc[0]
             data2 = df[df["Month"] == month2][selected_fields].iloc[0]
+            
+            # Create a comparison DataFrame with two columns: one for each month
             comparison = pd.DataFrame({
                 "Field": selected_fields,
                 month1: data1.values,
                 month2: data2.values
             })
-            comparison["Difference"] = comparison[month2] - comparison[month1]
-            fig = px.bar(comparison, x="Field", y="Difference", title="Comparison of Selected Fields")
+            # Melt the data so that each selected field has two rows (one per month)
+            melted = comparison.melt(id_vars="Field", var_name="Month", value_name="Amount")
+            
+            # Create a grouped bar chart
+            fig = px.bar(
+                melted, 
+                x="Field", 
+                y="Amount", 
+                color="Month", 
+                barmode="group", 
+                title="Comparison of Selected Fields"
+            )
             st.plotly_chart(fig)
+        except Exception as e:
+            st.error("Comparison data is not available for the selected months. " + str(e))
+
 
     # Tab 4: Cost Analysis
     with tab4:
