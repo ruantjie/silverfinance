@@ -15,7 +15,7 @@ try:
 except ImportError:
     PdfReader = None
 
-# Field configuration
+# Field configuration matching your PDF structure
 fields_list = [
     "Gross turnover",
     "Less VAT",
@@ -23,183 +23,192 @@ fields_list = [
     "Total cost of sales",
     "Beverages",
     "Bread and rolls",
-    # ... (rest of your fields)
+    "Butter and cheese",
+    "Chicken",
+    "Chips",
+    "Dairy",
+    "Delivery expenses",
+    "Desserts",
+    "Fish",
+    "Fruit and veg",
+    "Garnish",
+    "Groceries",
+    "Hot beverages",
+    "Ice-cream",
+    "Liquor - beer and cider",
+    "Liquor - spirits",
+    "Liquor - wine",
+    "Meat",
+    "Mushrooms",
+    "Oil",
+    "Ribs",
+    "Premade Sauces",
+    "Spur sauces",
+    "Gross profit",
+    "Other income",
+    "Breakages recovery",
+    "Interest received",
+    "Transport",
+    "Refund on old oil",
+    "Total variable overheads",
+    "Accounting and audit fees",
+    "Bank charges",
+    "Breakages and replacements",
+    "Cleaning and pest control",
+    "Computer expenses",
+    "Credit card commission Paid",
+    "Donations",
+    "Entertainment Costs",
+    "General gas",
+    "Hire of Equipment",
+    "Interest paid",
+    "Kids Entertainment",
+    "Legal and Licence fees",
+    "Printing, stationery and menus",
+    "Packaging cost",
+    "Repairs and maintenance",
+    "Salaries and wages: -Management",
+    "Salaries and wages: -Production staff (Incl Casuals)",
+    "Salaries and wages: -Waitrons (Incl Casuals)",
+    "Salaries and wages: -Director",
+    "Salaries and wages: -Company portion UIF and SDL",
+    "Staff transport",
+    "Staff uniforms",
+    "Staff meals",
+    "Staff medical",
+    "Telephone expenses",
+    "Waste removal",
+    "Total fixed overheads",
+    "Electricity, water, refuse, sewerage and rates",
+    "Insurance - HIC",
+    "Insurance - Sanlam",
+    "Rent paid",
+    "Security expenses",
+    "Marketing Fees",
+    "Marketing general",
+    "Spur Marketing fee",
+    "Spur Franchise Fee",
+    "Expenses grand total",
     "Nett Profit /(Loss)"
 ]
 
 alias_mapping = {
-    # ... (your alias mappings)
+    "nett turnover": ["net turnover"],
+    "credit card commission paid": ["credit card comission paid"],
+    "printing, stationery and menus": ["printing stationery and menus"],
+    "donations": ["donations"],
+    "salaries and wages: -management": ["-management"],
+    "nett profit /(loss)": ["net profit / loss", "nett profit/loss"]
 }
 
 @st.cache_data
-def load_data() -> pd.DataFrame:
-    """Load and cache financial data."""
+def load_data():
+    """Load historical data from CSV"""
     if os.path.exists(DATA_FILE):
         df = pd.read_csv(DATA_FILE, parse_dates=["month"])
     else:
         df = pd.DataFrame(columns=["month"] + fields_list)
     return df
 
-def save_data(df: pd.DataFrame) -> None:
-    """Save data to CSV."""
+def save_data(df):
+    """Save DataFrame to CSV"""
     df.to_csv(DATA_FILE, index=False)
 
-def month_selector(label: str) -> str:
-    """Date input that returns YYYY-MM format."""
-    selected_date = st.date_input(
-        label,
-        value=datetime.today().replace(day=1),
-        format="YYYY-MM-DD",
-        help="Select any day in the target month"
-    )
-    return selected_date.strftime("%Y-%m")
+def parse_pdf_data(pdf_bytes):
+    """Enhanced PDF parser for your income statement format"""
+    extracted_data = {}
+    pdf_reader = PdfReader(pdf_bytes)
+    full_text = "\n".join(page.extract_text() for page in pdf_reader.pages if page.extract_text())
 
-def manual_entry_form(df: pd.DataFrame) -> pd.DataFrame:
-    """Manual data entry form."""
-    with st.expander("📝 Manual Data Entry", expanded=True):
-        form = st.form(key="manual_form", clear_on_submit=True)
+    # Improved pattern to match both positive and negative amounts
+    amount_pattern = r"R?\s*(-?\s*\d{1,3}(?:,\d{3})*\.\d{2})"
+    
+    for field in fields_list:
+        search_terms = [field.lower()] + alias_mapping.get(field.lower(), [])
+        pattern = re.compile(rf"({'|'.join(re.escape(term) for term in search_terms)}).*?{amount_pattern}", re.IGNORECASE | re.DOTALL)
         
-        # Month selector
-        month = month_selector("Report Month")
-        
-        # Initialize data dict
-        manual_data = {}
+        match = pattern.search(full_text)
+        if match:
+            try:
+                amount = float(match.group(2).replace(" ", "").replace(",", ""))
+                extracted_data[field] = amount
+            except (ValueError, IndexError):
+                continue
 
-        # Income Section
-        form.subheader("Income Section")
-        income_cols = form.columns(3)
-        for i, field in enumerate(fields_list[:7]):
-            with income_cols[i % 3]:
-                manual_data[field] = st.number_input(
-                    field, 
-                    value=0.0, 
-                    step=1000.0,
-                    key=f"income_{field}"
-                )
-
-        # Expenses Section
-        form.subheader("Expenses Section")
-        with form.container():
-            expense_cols = st.columns(3)
-            for i, field in enumerate(fields_list[7:]):
-                with expense_cols[i % 3]:
-                    manual_data[field] = st.number_input(
-                        field, 
-                        value=0.0, 
-                        step=1000.0,
-                        key=f"expense_{field}"
-                    )
-
-        # Submit button
-        if form.form_submit_button("💾 Save Entry"):
-            return handle_data_submission(manual_data, month, df)
-    
-    return df
-
-def handle_data_submission(data: Dict, month: str, df: pd.DataFrame) -> pd.DataFrame:
-    """Process and validate data submission."""
-    # Convert to datetime for comparison
-    month_dt = pd.to_datetime(month)
-    
-    # Check for existing entries
-    if not df.empty and (df["month"].dt.strftime("%Y-%m") == month_dt.strftime("%Y-%m")).any():
-        st.error(f"Data for {month} already exists!")
-        return df
-    
-    # Auto-calculate Gross Profit
-    if data.get("Gross profit", 0) == 0:
-        data["Gross profit"] = data.get("Nett turnover", 0) - data.get("Total cost of sales", 0)
-    
-    # Create new row
-    new_row = pd.DataFrame([{**{"month": month_dt}, **data}])
-    updated_df = pd.concat([df, new_row], ignore_index=True).sort_values("month")
-    save_data(updated_df)
-    st.success(f"Data for {month} saved successfully!")
-    return updated_df
-
-def analysis_section(df: pd.DataFrame) -> None:
-    """Financial analysis visualizations."""
-    st.header("📈 Financial Analysis")
-    
-    if not df.empty:
-        # Convert month to string for display
-        display_df = df.copy()
-        display_df["month"] = display_df["month"].dt.strftime("%Y-%m")
-        
-        selected_fields = st.multiselect("Select Metrics", fields_list, default=["Nett turnover"])
-        chart_type = st.selectbox("Chart Type", ["Line", "Bar", "Area"])
-        
-        fig = px.line(display_df, x="month", y=selected_fields) if chart_type == "Line" else \
-              px.bar(display_df, x="month", y=selected_fields) if chart_type == "Bar" else \
-              px.area(display_df, x="month", y=selected_fields)
-        
-        fig.update_layout(
-            title=f"{chart_type} Chart of Selected Metrics",
-            xaxis_title="Month",
-            yaxis_title="Amount (R)",
-            hovermode="x unified",
-            template="plotly_white"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Data Table
-        st.subheader("📄 Financial Records")
-        styled_df = display_df.style.format({
-            **{field: CURRENCY_FORMAT for field in fields_list},
-            "month": lambda x: x
-        })
-        st.dataframe(styled_df, use_container_width=True)
-        
-        # Data Export
-        st.download_button(
-            "⬇️ Download Full Data",
-            df.to_csv(index=False),
-            file_name="financial_records.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("No data available for analysis")
-
-def data_management_section(df: pd.DataFrame) -> pd.DataFrame:
-    """Data maintenance functions."""
-    st.header("🔧 Data Management")
-    
-    if not df.empty:
-        st.metric("Total Records", len(df))
-        date_range = f"{df['month'].min().strftime('%Y-%m')} to {df['month'].max().strftime('%Y-%m')}"
-        st.metric("Date Range", date_range)
-        
-        if st.button("❌ Clear All Data"):
-            df = pd.DataFrame(columns=["month"] + fields_list)
-            save_data(df)
-            st.success("All data cleared successfully!")
-            return df
-    else:
-        st.warning("No data available in the system")
-    
-    return df
+    return extracted_data
 
 def main():
-    st.set_page_config(
-        page_title="Silver Finance Dashboard",
-        page_icon="💼",
-        layout="wide"
-    )
-    
+    st.set_page_config(page_title="Silver Finance Dashboard", page_icon="💼", layout="wide")
     st.title("💰 Silver Finance Management System")
+    
     df = load_data()
     
     with st.sidebar:
-        st.header("💰 Silver Finance")
         st.header("Navigation")
-        section = st.radio("Go to", ["Data Entry", "Financial Analysis", "Data Management"])
-    
-    if section == "Data Entry":
-        df = manual_entry_form(df)
-    elif section == "Financial Analysis":
-        analysis_section(df)
-    elif section == "Data Management":
-        df = data_management_section(df)
+        menu_choice = st.radio("Go to", ["Data Entry", "Financial Analysis"])
+        
+        st.header("PDF Import")
+        uploaded_pdf = st.file_uploader("Upload Income Statement", type=["pdf"])
+        if uploaded_pdf and PdfReader:
+            if st.button("Process PDF"):
+                parsed_data = parse_pdf_data(uploaded_pdf)
+                if parsed_data:
+                    month = st.date_input("Select Month for PDF Data", value=datetime.today().replace(day=1))
+                    month_str = month.strftime("%Y-%m")
+                    
+                    # Check for existing entries
+                    if month_str in df["month"].astype(str).values:
+                        st.error(f"Data for {month_str} already exists!")
+                    else:
+                        new_row = pd.DataFrame([{**{"month": month_str}, **parsed_data}])
+                        df = pd.concat([df, new_row], ignore_index=True)
+                        save_data(df)
+                        st.success("PDF data imported successfully!")
+                else:
+                    st.warning("No valid data found in PDF")
+
+    if menu_choice == "Data Entry":
+        st.header("Manual Data Entry")
+        # ... (keep your manual entry form code)
+
+    elif menu_choice == "Financial Analysis":
+        st.header("Financial Analysis")
+        if not df.empty:
+            st.subheader("Cost Comparison Over Time")
+            selected_fields = st.multiselect("Select Costs to Compare", fields_list, default=["Total cost of sales", "Gross profit"])
+            
+            fig = px.line(
+                df, 
+                x="month", 
+                y=selected_fields,
+                title="Cost Trend Analysis",
+                labels={"value": "Amount (R)", "month": "Month"},
+                template="plotly_white"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.subheader("Detailed Comparison")
+            selected_month = st.selectbox("Select Month", df["month"].unique())
+            month_data = df[df["month"] == selected_month].iloc[0]
+            
+            cols = st.columns(2)
+            with cols[0]:
+                st.metric("Total Costs", f"R{month_data['Total cost of sales']:,.2f}")
+                st.write("### Cost Breakdown")
+                cost_fields = [f for f in fields_list if "cost" in f.lower() or "expense" in f.lower()]
+                for field in cost_fields:
+                    if field in month_data and pd.notnull(month_data[field]):
+                        st.write(f"{field}: R{month_data[field]:,.2f}")
+            
+            with cols[1]:
+                st.metric("Net Profit", f"R{month_data['Nett Profit /(Loss)']:,.2f}")
+                st.write("### Income Breakdown")
+                income_fields = [f for f in fields_list if "income" in f.lower() or "turnover" in f.lower()]
+                for field in income_fields:
+                    if field in month_data and pd.notnull(month_data[field]):
+                        st.write(f"{field}: R{month_data[field]:,.2f}")
+        else:
+            st.info("No data available for analysis")
 
 if __name__ == "__main__":
     main()
