@@ -112,11 +112,14 @@ def send_alerts():
 
 def main_app():
     st.title("💰 Silver Spur Financial Management")
+
+    # Attempt to load existing data, if not create a new DataFrame
     try:
         df = pd.read_csv(DATA_FILE, parse_dates=["Month"])
     except Exception:
         df = pd.DataFrame(columns=["Month"] + FIELDS)
 
+    # Sidebar for logout and PDF upload
     with st.sidebar:
         if st.button("🚪 Logout"):
             st.session_state.authenticated = False
@@ -137,62 +140,70 @@ def main_app():
 
     threshold = send_alerts()
 
+    # Define Tabs
     tabs = st.tabs([
-        "📈 Line Graph", 
-        "📊 Bar Chart", 
-        "📅 Compare Months", 
-        "📋 Cost Analysis", 
-        "💹 Financial Ratios", 
-        "📝 Manual Entry", 
-        "🔄 Scenario Simulation", 
-        "🔮 Forecasting", 
+        "📈 Line Graph",
+        "📊 Bar Chart",
+        "📅 Compare Months",
+        "📋 Cost Analysis",
+        "💹 Financial Ratios",
+        "📝 Manual Entry",
+        "🔄 Scenario Simulation",
+        "🔮 Forecasting",
         "📄 Data"
     ])
     (tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9) = tabs
 
-  with tab1:
-    if not df.empty:
-        st.subheader("Financial Trends")
-
-        # Add a checkbox for quick comparison between turnover and food cost
-        quick_compare = st.checkbox("Quick Compare: Turnover vs Food Cost", key="quick_compare")
-
-        # If the checkbox is checked, automatically use the specified metrics
-        if quick_compare:
-            selected_metrics = ["Nett turnover", "Total cost of sales"]
-        else:
+    # Tab 1: Line Graph with Quick Compare Option
+    with tab1:
+        if not df.empty:
+            st.subheader("Financial Trends")
+            
+            # Quick Compare checkbox for turnover vs food cost
+            quick_compare = st.checkbox("Quick Compare: Turnover vs Food Cost", key="quick_compare")
+            
+            if quick_compare:
+                selected_metrics = ["Nett turnover", "Total cost of sales"]
+            else:
+                selected_metrics = st.multiselect(
+                    "Select Metrics", 
+                    FIELDS, 
+                    default=["Nett Profit /(Loss)"], 
+                    key="line_chart_metrics"
+                )
+            
+            fig = px.line(df, x="Month", y=selected_metrics, title="Performance Over Time")
+            st.plotly_chart(fig)
+            last_profit = df["Nett Profit /(Loss)"].iloc[-1]
+            if last_profit < threshold:
+                st.session_state.alerts.append(f"Nett Profit of R{last_profit:,.2f} is below the threshold!")
+    
+    # Tab 2: Bar Chart
+    with tab2:
+        if not df.empty:
+            st.subheader("Monthly Financials Bar Chart")
             selected_metrics = st.multiselect(
                 "Select Metrics", 
                 FIELDS, 
                 default=["Nett Profit /(Loss)"], 
-                key="line_chart_metrics"
+                key="bar_chart_metrics"
             )
-
-        # Render the line chart
-        fig = px.line(df, x="Month", y=selected_metrics, title="Performance Over Time")
-        st.plotly_chart(fig)
-
-        # Alert check: if Nett Profit is below threshold, add an alert
-        last_profit = df["Nett Profit /(Loss)"].iloc[-1]
-        if last_profit < threshold:
-            st.session_state.alerts.append(f"Nett Profit of R{last_profit:,.2f} is below the threshold!")
-
-
-
-    with tab2:
-        if not df.empty:
-            st.subheader("Monthly Financials Bar Chart")
-            selected_metrics = st.multiselect("Select Metrics", FIELDS, default=["Nett Profit /(Loss)"], key="bar_chart_metrics")
             fig = px.bar(df, x="Month", y=selected_metrics, title="Monthly Financials")
             st.plotly_chart(fig)
     
+    # Tab 3: Compare Months
     with tab3:
         if not df.empty:
             st.subheader("Compare Months")
             months = sorted(df["Month"].unique())
             month1_sel = st.selectbox("Select First Month", months, index=0, key="compare_month1")
             month2_sel = st.selectbox("Select Second Month", months, index=1, key="compare_month2")
-            selected_fields = st.multiselect("Select Fields to Compare", FIELDS, default=["Nett Profit /(Loss)"], key="compare_fields")
+            selected_fields = st.multiselect(
+                "Select Fields to Compare", 
+                FIELDS, 
+                default=["Nett Profit /(Loss)"], 
+                key="compare_fields"
+            )
             try:
                 data1 = df[df["Month"] == month1_sel][selected_fields].iloc[0]
                 data2 = df[df["Month"] == month2_sel][selected_fields].iloc[0]
@@ -201,19 +212,32 @@ def main_app():
                     month1_sel: data1.values,
                     month2_sel: data2.values
                 })
+                # Melt the DataFrame for grouped bar chart
                 melted = comparison.melt(id_vars="Field", var_name="Month", value_name="Amount")
-                fig = px.bar(melted, x="Field", y="Amount", color="Month", barmode="group", title="Comparison of Selected Fields")
+                fig = px.bar(
+                    melted,
+                    x="Field",
+                    y="Amount",
+                    color="Month",
+                    barmode="group",
+                    title="Comparison of Selected Fields"
+                )
                 st.plotly_chart(fig)
             except Exception as e:
                 st.error("Comparison data is not available for the selected months. " + str(e))
     
+    # Tab 4: Cost Analysis
     with tab4:
         if not df.empty:
             st.subheader("Cost Analysis")
             st.write("### Expense Breakdown")
-            expenses = df[FIELDS[3:]]
+            expenses = df[FIELDS[3:]]  # Exclude non-expense fields
             expense_totals = expenses.sum()
-            fig = px.pie(names=expense_totals.index, values=expense_totals.values, title="Expense Breakdown")
+            fig = px.pie(
+                names=expense_totals.index, 
+                values=expense_totals.values, 
+                title="Expense Breakdown"
+            )
             st.plotly_chart(fig)
             st.write("### Cost Correlations")
             corr = df[FIELDS].corr()
@@ -221,6 +245,7 @@ def main_app():
             sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", ax=ax)
             st.pyplot(fig_corr)
     
+    # Tab 5: Financial Ratios
     with tab5:
         if not df.empty:
             st.subheader("Financial Ratios")
@@ -240,14 +265,19 @@ def main_app():
                 (df_ratios["Total cost of sales"] / df_ratios["Nett turnover"]) * 100,
                 np.nan
             )
-            st.dataframe(df_ratios[["Month", "Gross Profit Margin (%)", "Net Profit Margin (%)", "Cost Ratio (%)"]].sort_values("Month"))
+            st.dataframe(
+                df_ratios[["Month", "Gross Profit Margin (%)", "Net Profit Margin (%)", "Cost Ratio (%)"]]
+                .sort_values("Month")
+            )
             fig_ratios = px.line(
-                df_ratios, x="Month",
+                df_ratios, 
+                x="Month",
                 y=["Gross Profit Margin (%)", "Net Profit Margin (%)", "Cost Ratio (%)"],
                 title="Financial Ratios Over Time"
             )
             st.plotly_chart(fig_ratios)
     
+    # Tab 6: Manual Data Entry
     with tab6:
         with st.form("manual_entry"):
             st.subheader("✍️ Manual Data Entry")
@@ -272,6 +302,7 @@ def main_app():
                 df.to_csv(DATA_FILE, index=False)
                 st.success("Entry saved!")
     
+    # Tab 7: Scenario Simulation
     with tab7:
         if not df.empty:
             st.subheader("Scenario Simulation (Based on Latest Record)")
@@ -306,6 +337,7 @@ def main_app():
             st.write("### Simulation Results")
             st.table(pd.DataFrame(sim_ratios, index=["Simulated"]).T)
     
+    # Tab 8: Forecasting
     with tab8:
         if not df.empty and df.shape[0] >= 3:
             st.subheader("Forecasting Nett Profit")
@@ -336,10 +368,12 @@ def main_app():
         else:
             st.info("Not enough data for forecasting (need at least 3 records).")
     
+    # Tab 9: Data
     with tab9:
         st.subheader("📄 Financial Records")
         st.dataframe(df.sort_values("Month", ascending=False))
         st.download_button("⬇️ Download CSV", df.to_csv(index=False), "financial_data.csv")
+
 
 if __name__ == "__main__":
     st.set_page_config(page_title="Silver Spur Analytics", layout="wide")
