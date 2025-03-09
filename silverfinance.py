@@ -38,6 +38,13 @@ fields_list = [
     "Expenses grand total", "Nett Profit /(Loss)"
 ]
 
+# Aliases for category variations (to handle typos or formatting differences)
+aliases = {
+    "Nett turnover": ["net turnover"],
+    "Credit card commission Paid": ["credit card comission paid"],
+    "Printing, stationery and menus": ["printing stationery and menus"]
+}
+
 # Initialize session state variables
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -93,9 +100,9 @@ def save_data(df):
         df.to_csv(DATA_FILE, index=False)
         st.session_state.data = df
         
-        # GitHub API integration with SSH secret
+        # GitHub API integration with SSH secret (replace with your repo details)
         g = Github(st.secrets["github"]["ssh_key"])
-        repo = g.get_repo("yourusername/yourrepo")  # Replace with your GitHub repo
+        repo = g.get_repo("yourusername/yourrepo")  # Update with your GitHub repo
         with open(DATA_FILE, "r") as file:
             content = file.read()
         # Update file in repo (requires existing file SHA)
@@ -119,29 +126,55 @@ def clear_data(df):
     """Clear all data, returning an empty DataFrame."""
     return pd.DataFrame(columns=["month"] + fields_list)
 
-def parse_pdf_data(pdf_bytes) -> dict:
-    """Parse financial data from uploaded PDF using regex."""
-    extracted_data = {}
+def parse_pdf_data(pdf_bytes):
+    """
+    Parse financial data from PDF bytes, ensuring all categories are extracted.
+    Reads all pages, uses regex for extraction, and maps categories with aliases.
+    """
+    # Read all pages of the PDF and combine text
     pdf_reader = PdfReader(pdf_bytes)
     full_text = "\n".join(page.extract_text() for page in pdf_reader.pages)
+    lines = full_text.split("\n")
     
-    amount_pattern = r"R?\s*(-?\s*\d{1,3}(?:,\d{3})*\.\d{2})"
+    # Create field mapping with normalized field names and aliases
+    field_mapping = {}
     for field in fields_list:
-        search_terms = [field.lower()] + [
-            alias.lower() for alias in {
-                "nett turnover": ["net turnover"],
-                "credit card commission paid": ["credit card comission paid"],
-                "printing, stationery and menus": ["printing stationery and menus"]
-            }.get(field, [])
-        ]
-        pattern = re.compile(rf"({'|'.join(search_terms)}).*?{amount_pattern}", re.IGNORECASE|re.DOTALL)
-        match = pattern.search(full_text)
+        normalized_field = " ".join(field.split()).strip().lower()
+        field_mapping[normalized_field] = field
+        for alias in aliases.get(field, []):
+            normalized_alias = " ".join(alias.split()).strip().lower()
+            field_mapping[normalized_alias] = field
+    
+    extracted_data = {}
+    # Regex pattern to match category name followed by "R" and value (e.g., "R 16,371.24")
+    pattern = r"^(.*?)\s+R\s+([\d,]+\.\d{2})"
+    
+    for line in lines:
+        match = re.search(pattern, line)
         if match:
+            # Extract and normalize category name
+            category = match.group(1).strip()
+            normalized_category = " ".join(category.split()).lower()
+            # Extract and convert value to float
+            value_str = match.group(2).replace(",", "").strip()
             try:
-                amount = float(match.group(2).replace(" ", "").replace(",", ""))
-                extracted_data[field] = amount
-            except:
-                continue
+                value = float(value_str)
+                # Map normalized category to original field name
+                if normalized_category in field_mapping:
+                    original_field = field_mapping[normalized_category]
+                    extracted_data[original_field] = value
+                else:
+                    st.warning(f"Category '{category}' not found in fields_list or aliases")
+            except ValueError:
+                continue  # Skip if value can't be converted to float
+    
+    # Optional: Log extracted and missing fields for debugging
+    missing_fields = [field for field in fields_list if field not in extracted_data]
+    if missing_fields:
+        st.info(f"Extracted {len(extracted_data)} fields. Missing: {', '.join(missing_fields)}")
+    else:
+        st.success("All fields extracted successfully!")
+    
     return extracted_data
 
 def manual_entry_form(df):
@@ -153,7 +186,7 @@ def manual_entry_form(df):
 
             st.subheader("Income Section")
             cols = st.columns(3)
-            for i, field in enumerate(fields_list[:15]):
+            for i, field in enumerate(fields_list[:15]):  # Adjust split based on your fields
                 with cols[i % 3]:
                     manual_data[field] = st.number_input(field, value=0.0, step=1000.0)
 
