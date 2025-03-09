@@ -7,8 +7,8 @@ import re
 from pypdf import PdfReader  # For PDF parsing
 
 # Configuration
-DATA_FILE = "financial_data.csv"
-CURRENCY_FORMAT = "R{:,.2f}"  # Currency format for display (South African Rand)
+CSV_FILE_PATH = "financial_data.csv"  # Path to the CSV in the GitHub repo
+CURRENCY_FORMAT = "R{:,.2f}"  # Currency format (South African Rand)
 
 # Financial fields list
 fields_list = [
@@ -39,6 +39,8 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'confirm_clear' not in st.session_state:
     st.session_state.confirm_clear = False
+if 'data' not in st.session_state:
+    st.session_state.data = None
 
 # Security functions
 def authenticate(username: str, password: str) -> bool:
@@ -55,25 +57,54 @@ def login_form():
         if st.form_submit_button("Login"):
             if authenticate(username, password):
                 st.session_state.logged_in = True
-                st.rerun()  # Updated from experimental_rerun
+                st.rerun()
             else:
                 st.error("Invalid credentials")
 
 def logout():
     """Log out the user and refresh the app."""
     st.session_state.logged_in = False
-    st.rerun()  # Updated from experimental_rerun
+    st.rerun()
 
+# Data handling functions
 @st.cache_data
 def load_data():
-    """Load financial data from CSV or return an empty DataFrame."""
-    if os.path.exists(DATA_FILE):
-        return pd.read_csv(DATA_FILE)  # 'month' stored as YYYY-MM string
-    return pd.DataFrame(columns=["month"] + fields_list)
+    """Load financial data from the CSV file in the repo."""
+    try:
+        df = pd.read_csv(CSV_FILE_PATH)
+        df["month"] = df["month"].astype(str)
+        for field in fields_list:
+            df[field] = pd.to_numeric(df[field], errors='coerce')
+        return df
+    except FileNotFoundError:
+        st.warning(f"{CSV_FILE_PATH} not found. Starting with an empty dataset.")
+        return pd.DataFrame(columns=["month"] + fields_list)
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return pd.DataFrame(columns=["month"] + fields_list)
 
 def save_data(df):
-    """Save DataFrame to CSV."""
-    df.to_csv(DATA_FILE, index=False)
+    """Save the updated DataFrame to a temporary file."""
+    try:
+        df.to_csv(CSV_FILE_PATH, index=False)
+        st.session_state.data = df  # Update session state
+        return True
+    except Exception as e:
+        st.error(f"Error saving data: {e}")
+        return False
+
+def append_row(month, data, df):
+    """Append a new row to the DataFrame if the month doesn’t exist."""
+    if month in df["month"].values:
+        st.error(f"Data for {month} already exists!")
+        return df
+    new_row = pd.DataFrame([[month] + [data[field] for field in fields_list]], columns=["month"] + fields_list)
+    df = pd.concat([df, new_row], ignore_index=True)
+    return df
+
+def clear_data(df):
+    """Clear all data, returning an empty DataFrame with the correct columns."""
+    return pd.DataFrame(columns=["month"] + fields_list)
 
 def parse_pdf_data(pdf_bytes) -> dict:
     """Parse financial data from PDF bytes using regex."""
@@ -120,19 +151,18 @@ def manual_entry_form(df):
                     manual_data[field] = st.number_input(field, value=0.0, step=1000.0)
 
             if st.form_submit_button("💾 Save Entry"):
-                if month in df["month"].astype(str).values:
-                    st.error(f"Data for {month} already exists!")
-                else:
-                    new_row = pd.DataFrame([{**{"month": month}, **manual_data}])
-                    df = pd.concat([df, new_row], ignore_index=True)
-                    save_data(df)
+                df = append_row(month, manual_data, df)
+                if save_data(df):
                     st.success(f"Entry for {month} saved!")
     return df
 
 def main_app():
-    """Main application with sidebar and tabs for data entry, analysis, and management."""
+    """Main application with sidebar and tabs."""
     st.title("💰 Silver Finance Management")
-    df = load_data()
+    # Load data into session state if not already loaded
+    if st.session_state.data is None:
+        st.session_state.data = load_data()
+    df = st.session_state.data
 
     with st.sidebar:
         if st.button("🚪 Logout"):
@@ -148,30 +178,37 @@ def main_app():
                     st.error("No data extracted from the PDF. Please check the file format.")
                 else:
                     month_str = pdf_month.strftime("%Y-%m")
-                    if month_str in df["month"].astype(str).values:
-                        st.error(f"Data for {month_str} already exists!")
-                    else:
-                        # Fill missing fields with 0.0
-                        full_data = {field: parsed_data.get(field, 0.0) for field in fields_list}
-                        new_row = pd.DataFrame([{**{"month": month_str}, **full_data}])
-                        df = pd.concat([df, new_row], ignore_index=True)
-                        save_data(df)
-                        st.success(f"PDF processed! Extracted {len(parsed_data)} out of {len(fields_list)} fields.")
+                    full_data = {field: parsed_data.get(field, 0.0) for field in fields_list}
+                    df = append_row(month_str, full_data, df)
+                    if save_data(df):
+                        st.success(f"PDF processed and data for {month_str} saved!")
 
     tab1, tab2, tab3 = st.tabs(["Data Entry", "Analysis", "Management"])
 
     with tab1:
         df = manual_entry_form(df)
+        st.session_state.data = df  # Update session state
 
     with tab2:
         if not df.empty:
-            selected = st.multiselect("Metrics", fields_list, default=["Nett Profit /(Loss)"])
-            # Convert month to datetime for plotting
-            fig = px.line(df.sort_values("month"), x=pd.to_datetime(df["month"] + '-01'), y=selected, title="Financial Trends")
+            selected_metrics = st.multiselect("Metrics for Trend Analysis", fields_list, default=["Nett Profit /(Loss)"])
+            # Plot trends over all months
+            fig = px.line(df.sort_values("month"), x=pd.to_datetime(df["month"] + '-01'), y=selected_metrics, title="Financial Trends")
             fig.update_layout(xaxis_title="Month", yaxis_title="Amount (R)")
             st.plotly_chart(fig)
-            
-            st.download_button("Download CSV", df.to_csv(index=False), "financial_data.csv")
+
+            # Month selector for detailed view
+            unique_months = sorted(df["month"].unique())
+            selected_month = st.selectbox("Select Month to View", ["All"] + unique_months)
+            if selected_month == "All":
+                display_df = df
+            else:
+                display_df = df[df["month"] == selected_month]
+            # Format numbers with currency
+            format_dict = {field: CURRENCY_FORMAT for field in fields_list}
+            st.dataframe(display_df.style.format(format_dict))
+
+            st.download_button("Download Data as CSV", df.to_csv(index=False), "financial_data.csv")
         else:
             st.info("No data available")
 
@@ -183,14 +220,15 @@ def main_app():
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("Confirm Deletion"):
-                    df = pd.DataFrame(columns=["month"] + fields_list)
+                    df = clear_data(df)
                     save_data(df)
                     st.session_state.confirm_clear = False
-                    st.rerun()  # Updated from experimental_rerun
+                    st.success("All data cleared!")
+                    st.rerun()
             with col2:
                 if st.button("Cancel"):
                     st.session_state.confirm_clear = False
-        # Format numbers with currency
+        # Display entire dataset
         format_dict = {field: CURRENCY_FORMAT for field in fields_list}
         st.dataframe(df.style.format(format_dict))
 
@@ -202,5 +240,7 @@ def main():
     else:
         main_app()
 
+if __name__ == "__main__":
+    main()
 if __name__ == "__main__":
     main()
