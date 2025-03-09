@@ -50,7 +50,7 @@ def select_statement_month(label="Select Statement Month"):
         year = st.selectbox(f"{label} - Year", years, index=years.index(current_year))
     with col2:
         month_name = st.selectbox(f"{label} - Month", month_names, index=datetime.today().month - 1)
-
+    
     month_index = month_names.index(month_name) + 1
     return f"{year}-{month_index:02d}"
 
@@ -160,11 +160,11 @@ def main_app():
             selected_metrics = st.multiselect("Select Metrics", FIELDS, default=["Nett Profit /(Loss)"], key="line_chart_metrics")
             fig = px.line(df, x="Month", y=selected_metrics, title="Performance Over Time")
             st.plotly_chart(fig)
-            # Alert check
+            # Check for alerts
             last_profit = df["Nett Profit /(Loss)"].iloc[-1]
             if last_profit < threshold:
                 st.session_state.alerts.append(f"Nett Profit of R{last_profit:,.2f} is below the threshold!")
-
+    
     # Tab 2: Bar Chart
     with tab2:
         if not df.empty:
@@ -197,8 +197,7 @@ def main_app():
         if not df.empty:
             st.subheader("Cost Analysis")
             st.write("### Expense Breakdown")
-            # Assuming expenses start from field index 3 (Total cost of sales) onward
-            expenses = df[FIELDS[3:]]
+            expenses = df[FIELDS[3:]]  # Exclude non-expense fields
             expense_totals = expenses.sum()
             fig = px.pie(names=expense_totals.index, values=expense_totals.values, title="Expense Breakdown")
             st.plotly_chart(fig)
@@ -212,7 +211,6 @@ def main_app():
     with tab5:
         if not df.empty:
             st.subheader("Financial Ratios")
-            # Calculate ratios for each record (if denominators are nonzero)
             df_ratios = df.copy()
             df_ratios["Gross Profit Margin (%)"] = np.where(
                 df_ratios["Gross turnover"] > 0,
@@ -230,7 +228,6 @@ def main_app():
                 np.nan
             )
             st.dataframe(df_ratios[["Month", "Gross Profit Margin (%)", "Net Profit Margin (%)", "Cost Ratio (%)"]].sort_values("Month"))
-            # Plot ratios over time
             fig_ratios = px.line(
                 df_ratios, x="Month",
                 y=["Gross Profit Margin (%)", "Net Profit Margin (%)", "Cost Ratio (%)"],
@@ -281,7 +278,7 @@ def main_app():
             rev_mult = st.number_input("Revenue Multiplier", value=1.0, key="sim_rev")
             cost_mult = st.number_input("Cost Multiplier", value=1.0, key="sim_cost")
             net_mult = st.number_input("Net Profit Multiplier", value=1.0, key="sim_net")
-            # Simulate new values
+            # Calculate simulation values.
             sim_gross_turnover = baseline_values["Gross Turnover"] * rev_mult
             sim_total_cost = baseline_values["Total Cost of Sales"] * cost_mult
             sim_gross_profit = sim_gross_turnover - sim_total_cost
@@ -304,9 +301,10 @@ def main_app():
         if not df.empty and df.shape[0] >= 3:
             st.subheader("Forecasting Nett Profit")
             horizon = st.number_input("Forecast Horizon (months)", value=3, min_value=1, step=1, key="forecast_horizon")
-            
-            # Prepare data: Use the 'Month' converted to ordinal values and 'Nett Profit /(Loss)'
+            # Ensure the Month column is a datetime object
             df_sorted = df.sort_values("Month")
+            df_sorted["Month"] = pd.to_datetime(df_sorted["Month"], format="%Y-%m", errors="coerce")
+            # Convert Month to ordinal values for regression
             x = df_sorted["Month"].map(datetime.toordinal).values
             y = df_sorted["Nett Profit /(Loss)"].values
             try:
@@ -322,7 +320,6 @@ def main_app():
                 })
                 st.write("### Forecasted Nett Profit")
                 st.table(forecast_df)
-                # Plot historical and forecast data
                 hist_fig = px.line(df_sorted, x="Month", y="Nett Profit /(Loss)", title="Historical Nett Profit")
                 forecast_fig = px.line(forecast_df, x="Date", y="Forecast Nett Profit", title="Forecasted Nett Profit")
                 st.plotly_chart(hist_fig)
