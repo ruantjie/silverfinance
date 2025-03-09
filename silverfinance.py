@@ -201,8 +201,6 @@ def main_app():
             entries = {}
 
             st.write("### Income Section")
-            income_fields = FIELDS
-
             income_fields = FIELDS[:10]
             inc_cols = st.columns(3)
             for i, field in enumerate(income_fields):
