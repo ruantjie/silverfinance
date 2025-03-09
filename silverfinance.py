@@ -44,13 +44,11 @@ def select_statement_month(label="Select Statement Month"):
     current_year = datetime.today().year
     years = list(range(2000, current_year + 1))
     month_names = list(calendar.month_name)[1:]
-
     col1, col2 = st.columns(2)
     with col1:
         year = st.selectbox(f"{label} - Year", years, index=years.index(current_year))
     with col2:
         month_name = st.selectbox(f"{label} - Month", month_names, index=datetime.today().month - 1)
-    
     month_index = month_names.index(month_name) + 1
     return f"{year}-{month_index:02d}"
 
@@ -119,7 +117,6 @@ def main_app():
     except Exception:
         df = pd.DataFrame(columns=["Month"] + FIELDS)
 
-    # Sidebar: Data Import and Logout
     with st.sidebar:
         if st.button("🚪 Logout"):
             st.session_state.authenticated = False
@@ -137,84 +134,65 @@ def main_app():
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     df.to_csv(DATA_FILE, index=False)
                     st.success("✅ PDF processed successfully!")
+
     threshold = send_alerts()
 
-    # Define tabs for different views
     tabs = st.tabs([
-    "📈 Line Graph", 
-    "📊 Bar Chart", 
-    "📅 Compare Months", 
-    "📋 Cost Analysis", 
-    "💹 Financial Ratios", 
-    "📝 Manual Entry", 
-    "🔄 Scenario Simulation", 
-    "🔮 Forecasting", 
-    "📄 Data"
-])
-(tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9) = tabs
+        "📈 Line Graph", 
+        "📊 Bar Chart", 
+        "📅 Compare Months", 
+        "📋 Cost Analysis", 
+        "💹 Financial Ratios", 
+        "📝 Manual Entry", 
+        "🔄 Scenario Simulation", 
+        "🔮 Forecasting", 
+        "📄 Data"
+    ])
+    (tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9) = tabs
 
-    # Tab 1: Line Graph
     with tab1:
         if not df.empty:
             st.subheader("Financial Trends")
             selected_metrics = st.multiselect("Select Metrics", FIELDS, default=["Nett Profit /(Loss)"], key="line_chart_metrics")
             fig = px.line(df, x="Month", y=selected_metrics, title="Performance Over Time")
             st.plotly_chart(fig)
-            # Check for alerts
             last_profit = df["Nett Profit /(Loss)"].iloc[-1]
             if last_profit < threshold:
                 st.session_state.alerts.append(f"Nett Profit of R{last_profit:,.2f} is below the threshold!")
     
-    # Tab 2: Bar Chart
     with tab2:
         if not df.empty:
             st.subheader("Monthly Financials Bar Chart")
             selected_metrics = st.multiselect("Select Metrics", FIELDS, default=["Nett Profit /(Loss)"], key="bar_chart_metrics")
             fig = px.bar(df, x="Month", y=selected_metrics, title="Monthly Financials")
             st.plotly_chart(fig)
-
- with tab3:
-    if not df.empty:
-        st.subheader("Compare Months")
-        # Let the user select two months
-        months = sorted(df["Month"].unique())
-        month1 = st.selectbox("Select First Month", months, index=0, key="compare_month1")
-        month2 = st.selectbox("Select Second Month", months, index=1, key="compare_month2")
-        selected_fields = st.multiselect("Select Fields to Compare", FIELDS, default=["Nett Profit /(Loss)"], key="compare_fields")
-        
-        try:
-            data1 = df[df["Month"] == month1][selected_fields].iloc[0]
-            data2 = df[df["Month"] == month2][selected_fields].iloc[0]
-            
-            # Create a comparison DataFrame with columns for each month
-            comparison = pd.DataFrame({
-                "Field": selected_fields,
-                month1: data1.values,
-                month2: data2.values
-            })
-            # Melt the DataFrame to convert it from wide format to long format.
-            melted = comparison.melt(id_vars="Field", var_name="Month", value_name="Amount")
-            
-            # Generate a grouped bar chart with a bar per field per month
-            fig = px.bar(
-                melted, 
-                x="Field", 
-                y="Amount", 
-                color="Month", 
-                barmode="group", 
-                title="Comparison of Selected Fields"
-            )
-            st.plotly_chart(fig)
-        except Exception as e:
-            st.error("Comparison data is not available for the selected months. "  + str(e))
-
-
-    # Tab 4: Cost Analysis
+    
+    with tab3:
+        if not df.empty:
+            st.subheader("Compare Months")
+            months = sorted(df["Month"].unique())
+            month1_sel = st.selectbox("Select First Month", months, index=0, key="compare_month1")
+            month2_sel = st.selectbox("Select Second Month", months, index=1, key="compare_month2")
+            selected_fields = st.multiselect("Select Fields to Compare", FIELDS, default=["Nett Profit /(Loss)"], key="compare_fields")
+            try:
+                data1 = df[df["Month"] == month1_sel][selected_fields].iloc[0]
+                data2 = df[df["Month"] == month2_sel][selected_fields].iloc[0]
+                comparison = pd.DataFrame({
+                    "Field": selected_fields,
+                    month1_sel: data1.values,
+                    month2_sel: data2.values
+                })
+                melted = comparison.melt(id_vars="Field", var_name="Month", value_name="Amount")
+                fig = px.bar(melted, x="Field", y="Amount", color="Month", barmode="group", title="Comparison of Selected Fields")
+                st.plotly_chart(fig)
+            except Exception as e:
+                st.error("Comparison data is not available for the selected months. " + str(e))
+    
     with tab4:
         if not df.empty:
             st.subheader("Cost Analysis")
             st.write("### Expense Breakdown")
-            expenses = df[FIELDS[3:]]  # Exclude non-expense fields
+            expenses = df[FIELDS[3:]]
             expense_totals = expenses.sum()
             fig = px.pie(names=expense_totals.index, values=expense_totals.values, title="Expense Breakdown")
             st.plotly_chart(fig)
@@ -223,8 +201,7 @@ def main_app():
             fig_corr, ax = plt.subplots(figsize=(10, 8))
             sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", ax=ax)
             st.pyplot(fig_corr)
-
-    # Tab 5: Financial Ratios
+    
     with tab5:
         if not df.empty:
             st.subheader("Financial Ratios")
@@ -251,8 +228,7 @@ def main_app():
                 title="Financial Ratios Over Time"
             )
             st.plotly_chart(fig_ratios)
-
-    # Tab 6: Manual Data Entry
+    
     with tab6:
         with st.form("manual_entry"):
             st.subheader("✍️ Manual Data Entry")
@@ -276,8 +252,7 @@ def main_app():
                 df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                 df.to_csv(DATA_FILE, index=False)
                 st.success("Entry saved!")
-
-    # Tab 7: Scenario Simulation
+    
     with tab7:
         if not df.empty:
             st.subheader("Scenario Simulation (Based on Latest Record)")
@@ -295,7 +270,6 @@ def main_app():
             rev_mult = st.number_input("Revenue Multiplier", value=1.0, key="sim_rev")
             cost_mult = st.number_input("Cost Multiplier", value=1.0, key="sim_cost")
             net_mult = st.number_input("Net Profit Multiplier", value=1.0, key="sim_net")
-            # Calculate simulation values.
             sim_gross_turnover = baseline_values["Gross Turnover"] * rev_mult
             sim_total_cost = baseline_values["Total Cost of Sales"] * cost_mult
             sim_gross_profit = sim_gross_turnover - sim_total_cost
@@ -312,16 +286,13 @@ def main_app():
             }
             st.write("### Simulation Results")
             st.table(pd.DataFrame(sim_ratios, index=["Simulated"]).T)
-
-    # Tab 8: Forecasting
+    
     with tab8:
         if not df.empty and df.shape[0] >= 3:
             st.subheader("Forecasting Nett Profit")
             horizon = st.number_input("Forecast Horizon (months)", value=3, min_value=1, step=1, key="forecast_horizon")
-            # Ensure the Month column is a datetime object
             df_sorted = df.sort_values("Month")
             df_sorted["Month"] = pd.to_datetime(df_sorted["Month"], format="%Y-%m", errors="coerce")
-            # Convert Month to ordinal values for regression
             x = df_sorted["Month"].map(datetime.toordinal).values
             y = df_sorted["Nett Profit /(Loss)"].values
             try:
@@ -345,8 +316,7 @@ def main_app():
                 st.error(f"Forecasting error: {e}")
         else:
             st.info("Not enough data for forecasting (need at least 3 records).")
-
-    # Tab 9: Data
+    
     with tab9:
         st.subheader("📄 Financial Records")
         st.dataframe(df.sort_values("Month", ascending=False))
