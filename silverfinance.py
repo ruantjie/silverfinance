@@ -1,284 +1,204 @@
+# 🚀 app.py - Restaurant Financial Analytics
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import os
 import re
-from pypdf import PdfReader  # For PDF parsing
-from github import Github  # For GitHub API integration
+from pypdf import PdfReader
 
-# Set page configuration as the first Streamlit command to avoid errors
-st.set_page_config(page_title="Silver Finance", layout="wide")
-
-# Configuration
-DATA_FILE = "financial_data.csv"
-CURRENCY_FORMAT = "R{:,.2f}"  # South African Rand currency format for display
-
-# Financial fields list
-fields_list = [
-    "Gross turnover", "Less VAT", "Nett turnover", "Total cost of sales",
-    "Beverages", "Bread and rolls", "Butter and cheese", "Chicken", "Chips",
-    "Dairy", "Delivery expenses", "Desserts", "Fish", "Fruit and veg", "Garnish",
-    "Groceries", "Hot beverages", "Ice-cream", "Liquor - beer and cider",
-    "Liquor - spirits", "Liquor - wine", "Meat", "Mushrooms", "Oil", "Ribs",
-    "Premade Sauces", "Spur sauces", "Gross profit", "Other income",
-    "Breakages recovery", "Interest received", "Transport", "Refund on old oil",
-    "Total variable overheads", "Accounting and audit fees", "Bank charges",
-    "Breakages and replacements", "Cleaning and pest control", "Computer expenses",
-    "Credit card commission Paid", "Donations", "Entertainment Costs", "General gas",
-    "Hire of Equipment", "Interest paid", "Kids Entertainment", "Legal and Licence fees",
-    "Printing, stationery and menus", "Packaging cost", "Repairs and maintenance",
-    "Salaries and wages: -Management", "Salaries and wages: -Production staff (Incl Casuals)",
-    "Salaries and wages: -Waitrons (Incl Casuals)", "Salaries and wages: -Director",
-    "Salaries and wages: -Company portion UIF and SDL", "Staff transport", "Staff uniforms",
-    "Staff meals", "Staff medical", "Telephone expenses", "Waste removal",
-    "Total fixed overheads", "Electricity, water, refuse, sewerage and rates",
-    "Insurance - HIC", "Insurance - Sanlam", "Rent paid", "Security expenses",
-    "Marketing Fees", "Marketing general", "Spur Marketing fee", "Spur Franchise Fee",
-    "Expenses grand total", "Nett Profit /(Loss)"
-]
-
-# Aliases for category variations (to handle typos or formatting differences)
-aliases = {
-    "Nett turnover": ["net turnover"],
-    "Credit card commission Paid": ["credit card comission paid"],
-    "Printing, stationery and menus": ["printing stationery and menus"]
+# 🔒 Authentication (Use Streamlit Secrets in production)
+AUTHENTICATION = {
+    "username": "Silver",
+    "password": "Silver@123"
 }
 
-# Initialize session state variables
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'confirm_clear' not in st.session_state:
-    st.session_state.confirm_clear = False
-if 'data' not in st.session_state:
-    st.session_state.data = None
+# 📁 Data Configuration
+DATA_FILE = "restaurant_finances.csv"
+CURRENCY = "R{:,.2f}"
+CATEGORIES = [
+    "Gross turnover", "Less VAT", "Nett turnover", "Total cost of sales",
+    "Beverages", "Staff wages", "Utilities", "Marketing", "Gross profit",
+    "Net profit/(loss)"
+]
 
-# Security functions
-def authenticate(username: str, password: str) -> bool:
-    """Authenticate user against credentials stored in st.secrets."""
-    return (username == st.secrets["credentials"]["username"] and
-            password == st.secrets["credentials"]["password"])
+# 🏁 Session State Initialization
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+if "data" not in st.session_state:
+    st.session_state.data = pd.DataFrame(columns=["Month"] + CATEGORIES)
 
-def login_form():
-    """Display login form and handle authentication."""
-    with st.form("Login"):
-        st.subheader("Silver Finance Login 🔒")
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        if st.form_submit_button("Login"):
-            if authenticate(username, password):
-                st.session_state.logged_in = True
-                st.rerun()  # Refresh app after login
+# 🔐 Authentication Functions
+def login_section():
+    """Secure login form with emojis"""
+    with st.form("auth"):
+        st.title("🍽 Restaurant Financial Hub")
+        st.subheader("🔒 Authenticate to Continue")
+        user = st.text_input("👤 Username")
+        pwd = st.text_input("🔑 Password", type="password")
+        
+        if st.form_submit_button("🚪 Login"):
+            if user == AUTHENTICATION["username"] and pwd == AUTHENTICATION["password"]:
+                st.session_state.auth = True
+                st.rerun()
             else:
-                st.error("Invalid credentials")
+                st.error("❌ Invalid credentials")
 
-def logout():
-    """Log out the user and refresh the app."""
-    st.session_state.logged_in = False
-    st.rerun()
-
-# Data handling functions
+# 📊 Data Handling
 @st.cache_data
-def load_data():
-    """Load financial data from CSV file."""
+def load_financials():
+    """Load data from GitHub repository"""
     try:
-        df = pd.read_csv(DATA_FILE)
-        df["month"] = df["month"].astype(str)
-        for field in fields_list:
-            df[field] = pd.to_numeric(df[field], errors='coerce')
-        return df
-    except FileNotFoundError:
-        st.warning(f"{DATA_FILE} not found. Starting with an empty dataset.")
-        return pd.DataFrame(columns=["month"] + fields_list)
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return pd.DataFrame(columns=["month"] + fields_list)
+        return pd.read_csv(DATA_FILE, parse_dates=["Month"])
+    except:
+        return pd.DataFrame(columns=["Month"] + CATEGORIES)
 
-def save_data(df):
-    """Save DataFrame to CSV and push to GitHub using SSH secret."""
+def save_financials(df):
+    """Save data to GitHub repository"""
     try:
         df.to_csv(DATA_FILE, index=False)
-        st.session_state.data = df
-        
-        # GitHub API integration with SSH secret (replace with your repo details)
-        g = Github(st.secrets["github"]["ssh_key"])
-        repo = g.get_repo("yourusername/yourrepo")  # Update with your GitHub repo
-        with open(DATA_FILE, "r") as file:
-            content = file.read()
-        # Update file in repo (requires existing file SHA)
-        contents = repo.get_contents(DATA_FILE)
-        repo.update_file(DATA_FILE, "Update financial_data.csv", content, contents.sha)
         return True
     except Exception as e:
-        st.error(f"Error saving data to GitHub: {e}")
+        st.error(f"💾 Save Error: {str(e)}")
         return False
 
-def append_row(month, data, df):
-    """Append a new row to DataFrame if month doesn't exist."""
-    if month in df["month"].values:
-        st.error(f"Data for {month} already exists!")
-        return df
-    new_row = pd.DataFrame([[month] + [data[field] for field in fields_list]], 
-                          columns=["month"] + fields_list)
-    return pd.concat([df, new_row], ignore_index=True)
+def parse_statement(pdf_file):
+    """Advanced PDF parser for restaurant financials"""
+    try:
+        reader = PdfReader(pdf_file)
+        text = "\n".join([page.extract_text() for page in reader.pages])
+        
+        # 🧹 Text cleaning and normalization
+        text = re.sub(r"\s+", " ", text)  # Remove extra whitespace
+        text = re.sub(r"(%|\$|ZAR)", "", text)  # Remove currency symbols
+        
+        # 🕵️ Field-value extraction
+        financials = {}
+        for field in CATEGORIES:
+            # Match field name followed by amount (handles multi-line)
+            pattern = re.compile(
+                rf"{re.escape(field)}.*?(R?\s*[\d,]+\.\d{{2}})", 
+                re.IGNORECASE | re.DOTALL
+            )
+            match = pattern.search(text)
+            if match:
+                try:
+                    value = float(match.group(1).replace("R", "").replace(",", "").strip())
+                    financials[field] = value
+                except:
+                    continue
+        
+        return financials
+    except Exception as e:
+        st.error(f"📄 PDF Error: {str(e)}")
+        return {}
 
-def clear_data(df):
-    """Clear all data, returning an empty DataFrame."""
-    return pd.DataFrame(columns=["month"] + fields_list)
-
-def parse_pdf_data(pdf_bytes):
-    """
-    Parse financial data from PDF bytes, ensuring all categories are extracted.
-    Reads all pages, uses regex for extraction, and maps categories with aliases.
-    """
-    # Read all pages of the PDF and combine text
-    pdf_reader = PdfReader(pdf_bytes)
-    full_text = "\n".join(page.extract_text() for page in pdf_reader.pages)
-    lines = full_text.split("\n")
+# 📈 Visualization Components
+def profit_loss_dashboard(df):
+    """Interactive financial dashboard"""
+    st.header("📅 Monthly Financial Overview")
     
-    # Create field mapping with normalized field names and aliases
-    field_mapping = {}
-    for field in fields_list:
-        normalized_field = " ".join(field.split()).strip().lower()
-        field_mapping[normalized_field] = field
-        for alias in aliases.get(field, []):
-            normalized_alias = " ".join(alias.split()).strip().lower()
-            field_mapping[normalized_alias] = field
+    # 🎚️ Timeframe Selector
+    col1, col2 = st.columns(2)
+    with col1:
+        start = st.date_input("📌 Start Date", df["Month"].min())
+    with col2:
+        end = st.date_input("📌 End Date", df["Month"].max())
     
-    extracted_data = {}
-    # Regex pattern to match category name followed by "R" and value (e.g., "R 16,371.24")
-    pattern = r"^(.*?)\s+R\s+([\d,]+\.\d{2})"
+    filtered = df[(df["Month"] >= pd.to_datetime(start)) & 
+                (df["Month"] <= pd.to_datetime(end))]
     
-    for line in lines:
-        match = re.search(pattern, line)
-        if match:
-            # Extract and normalize category name
-            category = match.group(1).strip()
-            normalized_category = " ".join(category.split()).lower()
-            # Extract and convert value to float
-            value_str = match.group(2).replace(",", "").strip()
-            try:
-                value = float(value_str)
-                # Map normalized category to original field name
-                if normalized_category in field_mapping:
-                    original_field = field_mapping[normalized_category]
-                    extracted_data[original_field] = value
-                else:
-                    st.warning(f"Category '{category}' not found in fields_list or aliases")
-            except ValueError:
-                continue  # Skip if value can't be converted to float
+    # 📊 Main Financial Metrics
+    metric_cols = st.columns(3)
+    with metric_cols[0]:
+        st.metric("💰 Total Income", filtered["Nett turnover"].sum())
+    with metric_cols[1]:
+        st.metric("💸 Total Expenses", filtered["Total cost of sales"].sum())
+    with metric_cols[2]:
+        st.metric("📈 Net Profit", filtered["Net profit/(loss)"].sum())
     
-    # Optional: Log extracted and missing fields for debugging
-    missing_fields = [field for field in fields_list if field not in extracted_data]
-    if missing_fields:
-        st.info(f"Extracted {len(extracted_data)} fields. Missing: {', '.join(missing_fields)}")
-    else:
-        st.success("All fields extracted successfully!")
+    # 📉 Interactive Trend Chart
+    fig = px.line(filtered, x="Month", y=CATEGORIES,
+                 title="Financial Trends Over Time",
+                 labels={"value": "Amount (R)"})
+    st.plotly_chart(fig, use_container_width=True)
+
+# 🖥 Main Application Interface
+def main_interface():
+    st.title("🍴 Silver Spur Financial Management")
     
-    return extracted_data
-
-def manual_entry_form(df):
-    """Form for manual data entry, split into income and expenses."""
-    with st.expander("📝 Manual Data Entry", expanded=True):
-        with st.form("manual_form", clear_on_submit=True):
-            month = st.date_input("Report Month", value=datetime.today().replace(day=1)).strftime("%Y-%m")
-            manual_data = {}
-
-            st.subheader("Income Section")
-            cols = st.columns(3)
-            for i, field in enumerate(fields_list[:15]):  # Adjust split based on your fields
-                with cols[i % 3]:
-                    manual_data[field] = st.number_input(field, value=0.0, step=1000.0)
-
-            st.subheader("Expenses Section")
-            exp_cols = st.columns(3)
-            for i, field in enumerate(fields_list[15:]):
-                with exp_cols[i % 3]:
-                    manual_data[field] = st.number_input(field, value=0.0, step=1000.0)
-
-            if st.form_submit_button("💾 Save Entry"):
-                df = append_row(month, manual_data, df)
-                if save_data(df):
-                    st.success(f"Entry for {month} saved!")
-    return df
-
-def main_app():
-    """Main app with sidebar and tabs for data entry, analysis, and management."""
-    st.title("💰 Silver Finance Management")
-    # Load data if not already in session state
-    if st.session_state.data is None:
-        st.session_state.data = load_data()
-    df = st.session_state.data
-
+    # 💾 Load Data
+    df = load_financials()
+    
+    # 🎛️ Sidebar Controls
     with st.sidebar:
+        st.header("⚙️ Operations")
         if st.button("🚪 Logout"):
-            logout()
+            st.session_state.auth = False
+            st.rerun()
         
-        st.header("Data Import")
-        with st.expander("📄 Upload PDF"):
-            uploaded_pdf = st.file_uploader("PDF File", type=["pdf"])
-            pdf_month = st.date_input("Statement Month", value=datetime.today().replace(day=1))
-            if uploaded_pdf and st.button("Process PDF"):
-                parsed_data = parse_pdf_data(uploaded_pdf)
-                if not parsed_data:
-                    st.error("No data extracted from PDF. Check file format.")
-                else:
-                    month_str = pdf_month.strftime("%Y-%m")
-                    full_data = {field: parsed_data.get(field, 0.0) for field in fields_list}
-                    df = append_row(month_str, full_data, df)
-                    if save_data(df):
-                        st.success(f"PDF processed and data for {month_str} saved!")
-
-    tab1, tab2, tab3 = st.tabs(["Data Entry", "Analysis", "Management"])
-
+        # 📄 PDF Processing
+        st.subheader("📤 Import Statement")
+        uploaded_pdf = st.file_uploader("Upload PDF", type=["pdf"])
+        if uploaded_pdf and st.button("✨ Process PDF"):
+            parsed_data = parse_statement(uploaded_pdf)
+            if parsed_data:
+                month = st.date_input("🗓️ Statement Month")
+                new_row = {"Month": month, **parsed_data}
+                updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                if save_financials(updated_df):
+                    st.success("✅ PDF processed successfully!")
+                    df = updated_df
+    
+    # 📝 Data Entry & Analysis Tabs
+    tab1, tab2, tab3 = st.tabs(["📝 Manual Entry", "📊 Analysis", "⚙️ Management"])
+    
     with tab1:
-        df = manual_entry_form(df)
-        st.session_state.data = df
-
+        with st.form("manual_entry"):
+            st.subheader("✍️ Manual Data Entry")
+            month = st.date_input("🗓️ Month")
+            income = st.number_input("💰 Gross Income", min_value=0.0)
+            expenses = st.number_input("💸 Total Expenses", min_value=0.0)
+            profit = st.number_input("📈 Net Profit", value=income - expenses)
+            
+            if st.form_submit_button("💾 Save Entry"):
+                new_row = {
+                    "Month": month,
+                    "Gross turnover": income,
+                    "Total cost of sales": expenses,
+                    "Net profit/(loss)": profit
+                }
+                updated_df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                if save_financials(updated_df):
+                    st.success("✅ Entry saved successfully!")
+                    df = updated_df
+    
     with tab2:
-        if not df.empty:
-            selected_metrics = st.multiselect("Metrics for Trend Analysis", 
-                                            fields_list, default=["Nett Profit /(Loss)"])
-            fig = px.line(df.sort_values("month"), x=pd.to_datetime(df["month"] + '-01'), 
-                         y=selected_metrics, title="Financial Trends")
-            fig.update_layout(xaxis_title="Month", yaxis_title="Amount (R)")
-            st.plotly_chart(fig)
-
-            unique_months = sorted(df["month"].unique())
-            selected_month = st.selectbox("Select Month to View", ["All"] + unique_months)
-            display_df = df if selected_month == "All" else df[df["month"] == selected_month]
-            format_dict = {field: CURRENCY_FORMAT for field in fields_list}
-            st.dataframe(display_df.style.format(format_dict))
-
-            st.download_button("Download Data as CSV", df.to_csv(index=False), "financial_data.csv")
-        else:
-            st.info("No data available")
-
-    with tab3:
-        if st.button("Clear All Data"):
-            st.session_state.confirm_clear = True
+        profit_loss_dashboard(df)
         
-        if st.session_state.confirm_clear:
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Confirm Deletion"):
-                    df = clear_data(df)
-                    save_data(df)
-                    st.session_state.confirm_clear = False
-                    st.success("All data cleared!")
-                    st.rerun()
-            with col2:
-                if st.button("Cancel"):
-                    st.session_state.confirm_clear = False
-        format_dict = {field: CURRENCY_FORMAT for field in fields_list}
-        st.dataframe(df.style.format(format_dict))
+        # 🔍 Detailed Analysis
+        st.subheader("🔍 Detailed Breakdown")
+        selected = st.multiselect("Choose Categories", CATEGORIES, default=CATEGORIES[:3])
+        if selected:
+            fig = px.bar(df.melt(id_vars="Month", value_vars=selected),
+                        x="Month", y="value", color="variable",
+                        title="Category Comparison")
+            st.plotly_chart(fig)
+    
+    with tab3:
+        st.subheader("🗄️ Data Management")
+        st.dataframe(df.sort_values("Month", ascending=False))
+        
+        if st.button("🧹 Clear All Data"):
+            df = pd.DataFrame(columns=["Month"] + CATEGORIES)
+            save_financials(df)
+            st.rerun()
+        
+        st.download_button("⬇️ Export CSV", df.to_csv(), "financial_data.csv")
 
-def main():
-    """Entry point for the Streamlit app."""
-    if not st.session_state.logged_in:
-        login_form()
-    else:
-        main_app()
-
+# 🚀 Launch Application
 if __name__ == "__main__":
-    main()
+    st.set_page_config(page_title="Restaurant Finance", layout="wide")
+    if st.session_state.auth:
+        main_interface()
+    else:
+        login_section()
