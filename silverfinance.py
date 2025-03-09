@@ -151,15 +151,28 @@ def main_app():
     (tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9) = tabs
 
     with tab1:
-        if not df.empty:
-            st.subheader("Financial Trends")
-            selected_metrics = st.multiselect("Select Metrics", FIELDS, default=["Nett Profit /(Loss)"], key="line_chart_metrics")
-            fig = px.line(df, x="Month", y=selected_metrics, title="Performance Over Time")
-            st.plotly_chart(fig)
-            last_profit = df["Nett Profit /(Loss)"].iloc[-1]
-            if last_profit < threshold:
-                st.session_state.alerts.append(f"Nett Profit of R{last_profit:,.2f} is below the threshold!")
-    
+    if not df.empty:
+        st.subheader("Financial Trends")
+        
+        # Add checkbox for quick comparison between turnover and food cost
+        quick_compare = st.checkbox("Quick Compare: Turnover vs Food Cost", key="quick_compare")
+        
+        if quick_compare:
+            # Using "Nett turnover" for turnover and "Total cost of sales" for food cost
+            selected_metrics = ["Nett turnover", "Total cost of sales"]
+        else:
+            selected_metrics = st.multiselect("Select Metrics", FIELDS, 
+                                              default=["Nett Profit /(Loss)"], 
+                                              key="line_chart_metrics")
+        
+        fig = px.line(df, x="Month", y=selected_metrics, title="Performance Over Time")
+        st.plotly_chart(fig)
+        
+        # Alert check for Nett Profit
+        last_profit = df["Nett Profit /(Loss)"].iloc[-1]
+        if last_profit < threshold:
+            st.session_state.alerts.append(f"Nett Profit of R{last_profit:,.2f} is below the threshold!")
+
     with tab2:
         if not df.empty:
             st.subheader("Monthly Financials Bar Chart")
