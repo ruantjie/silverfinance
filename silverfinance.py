@@ -141,17 +141,17 @@ def main_app():
 
     # Define tabs for different views
     tabs = st.tabs([
-        "📈 Line Graph", 
-        "📊 Bar Chart", 
-        "📅 Compare Months", 
-        "📋 Cost Analysis", 
-        "💹 Financial Ratios", 
-        "📝 Manual Entry", 
-        "🔄 Scenario Simulation", 
-        "🔮 Forecasting", 
-        "📄 Data"
-    ])
-    (tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9) = tabs
+    "📈 Line Graph", 
+    "📊 Bar Chart", 
+    "📅 Compare Months", 
+    "📋 Cost Analysis", 
+    "💹 Financial Ratios", 
+    "📝 Manual Entry", 
+    "🔄 Scenario Simulation", 
+    "🔮 Forecasting", 
+    "📄 Data"
+])
+(tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9) = tabs
 
     # Tab 1: Line Graph
     with tab1:
