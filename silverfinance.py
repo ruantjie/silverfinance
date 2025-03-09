@@ -173,10 +173,10 @@ def main_app():
             fig = px.bar(df, x="Month", y=selected_metrics, title="Monthly Financials")
             st.plotly_chart(fig)
 
-   # Tab 3: Compare Months
-with tab3:
+ with tab3:
     if not df.empty:
         st.subheader("Compare Months")
+        # Let the user select two months
         months = sorted(df["Month"].unique())
         month1 = st.selectbox("Select First Month", months, index=0, key="compare_month1")
         month2 = st.selectbox("Select Second Month", months, index=1, key="compare_month2")
@@ -186,16 +186,16 @@ with tab3:
             data1 = df[df["Month"] == month1][selected_fields].iloc[0]
             data2 = df[df["Month"] == month2][selected_fields].iloc[0]
             
-            # Create a comparison DataFrame with two columns: one for each month
+            # Create a comparison DataFrame with columns for each month
             comparison = pd.DataFrame({
                 "Field": selected_fields,
                 month1: data1.values,
                 month2: data2.values
             })
-            # Melt the data so that each selected field has two rows (one per month)
+            # Melt the DataFrame to convert it from wide format to long format.
             melted = comparison.melt(id_vars="Field", var_name="Month", value_name="Amount")
             
-            # Create a grouped bar chart
+            # Generate a grouped bar chart with a bar per field per month
             fig = px.bar(
                 melted, 
                 x="Field", 
@@ -206,7 +206,7 @@ with tab3:
             )
             st.plotly_chart(fig)
         except Exception as e:
-            st.error("Comparison data is not available for the selected months. " + str(e))
+            st.error("Comparison data is not available for the selected months. "  + str(e))
 
 
     # Tab 4: Cost Analysis
