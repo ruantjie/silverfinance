@@ -1,5 +1,9 @@
 streamlit
 pandas
 plotly
+calendar
+datetime
+re
 pypdf
-PyGithub
+seaborn
+matplotlib
