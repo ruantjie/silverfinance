@@ -5,10 +5,14 @@ from datetime import datetime
 import os
 import re
 from pypdf import PdfReader  # For PDF parsing
+from github import Github  # For GitHub API integration
+
+# Set page configuration as the first Streamlit command to avoid errors
+st.set_page_config(page_title="Silver Finance", layout="wide")
 
 # Configuration
-CSV_FILE_PATH = "financial_data.csv"  # Path to the CSV in the GitHub repo
-CURRENCY_FORMAT = "R{:,.2f}"  # Currency format (South African Rand)
+DATA_FILE = "financial_data.csv"
+CURRENCY_FORMAT = "R{:,.2f}"  # South African Rand currency format for display
 
 # Financial fields list
 fields_list = [
@@ -34,7 +38,7 @@ fields_list = [
     "Expenses grand total", "Nett Profit /(Loss)"
 ]
 
-# Initialize session state
+# Initialize session state variables
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'confirm_clear' not in st.session_state:
@@ -44,7 +48,7 @@ if 'data' not in st.session_state:
 
 # Security functions
 def authenticate(username: str, password: str) -> bool:
-    """Authenticate user against credentials from st.secrets."""
+    """Authenticate user against credentials stored in st.secrets."""
     return (username == st.secrets["credentials"]["username"] and
             password == st.secrets["credentials"]["password"])
 
@@ -57,7 +61,7 @@ def login_form():
         if st.form_submit_button("Login"):
             if authenticate(username, password):
                 st.session_state.logged_in = True
-                st.rerun()
+                st.rerun()  # Refresh app after login
             else:
                 st.error("Invalid credentials")
 
@@ -69,45 +73,54 @@ def logout():
 # Data handling functions
 @st.cache_data
 def load_data():
-    """Load financial data from the CSV file in the repo."""
+    """Load financial data from CSV file."""
     try:
-        df = pd.read_csv(CSV_FILE_PATH)
+        df = pd.read_csv(DATA_FILE)
         df["month"] = df["month"].astype(str)
         for field in fields_list:
             df[field] = pd.to_numeric(df[field], errors='coerce')
         return df
     except FileNotFoundError:
-        st.warning(f"{CSV_FILE_PATH} not found. Starting with an empty dataset.")
+        st.warning(f"{DATA_FILE} not found. Starting with an empty dataset.")
         return pd.DataFrame(columns=["month"] + fields_list)
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return pd.DataFrame(columns=["month"] + fields_list)
 
 def save_data(df):
-    """Save the updated DataFrame to a temporary file."""
+    """Save DataFrame to CSV and push to GitHub using SSH secret."""
     try:
-        df.to_csv(CSV_FILE_PATH, index=False)
-        st.session_state.data = df  # Update session state
+        df.to_csv(DATA_FILE, index=False)
+        st.session_state.data = df
+        
+        # GitHub API integration with SSH secret
+        g = Github(st.secrets["github"]["ssh_key"])
+        repo = g.get_repo("yourusername/yourrepo")  # Replace with your GitHub repo
+        with open(DATA_FILE, "r") as file:
+            content = file.read()
+        # Update file in repo (requires existing file SHA)
+        contents = repo.get_contents(DATA_FILE)
+        repo.update_file(DATA_FILE, "Update financial_data.csv", content, contents.sha)
         return True
     except Exception as e:
-        st.error(f"Error saving data: {e}")
+        st.error(f"Error saving data to GitHub: {e}")
         return False
 
 def append_row(month, data, df):
-    """Append a new row to the DataFrame if the month doesn’t exist."""
+    """Append a new row to DataFrame if month doesn't exist."""
     if month in df["month"].values:
         st.error(f"Data for {month} already exists!")
         return df
-    new_row = pd.DataFrame([[month] + [data[field] for field in fields_list]], columns=["month"] + fields_list)
-    df = pd.concat([df, new_row], ignore_index=True)
-    return df
+    new_row = pd.DataFrame([[month] + [data[field] for field in fields_list]], 
+                          columns=["month"] + fields_list)
+    return pd.concat([df, new_row], ignore_index=True)
 
 def clear_data(df):
-    """Clear all data, returning an empty DataFrame with the correct columns."""
+    """Clear all data, returning an empty DataFrame."""
     return pd.DataFrame(columns=["month"] + fields_list)
 
 def parse_pdf_data(pdf_bytes) -> dict:
-    """Parse financial data from PDF bytes using regex."""
+    """Parse financial data from uploaded PDF using regex."""
     extracted_data = {}
     pdf_reader = PdfReader(pdf_bytes)
     full_text = "\n".join(page.extract_text() for page in pdf_reader.pages)
@@ -132,7 +145,7 @@ def parse_pdf_data(pdf_bytes) -> dict:
     return extracted_data
 
 def manual_entry_form(df):
-    """Form for manual data entry with income and expenses sections."""
+    """Form for manual data entry, split into income and expenses."""
     with st.expander("📝 Manual Data Entry", expanded=True):
         with st.form("manual_form", clear_on_submit=True):
             month = st.date_input("Report Month", value=datetime.today().replace(day=1)).strftime("%Y-%m")
@@ -157,9 +170,9 @@ def manual_entry_form(df):
     return df
 
 def main_app():
-    """Main application with sidebar and tabs."""
+    """Main app with sidebar and tabs for data entry, analysis, and management."""
     st.title("💰 Silver Finance Management")
-    # Load data into session state if not already loaded
+    # Load data if not already in session state
     if st.session_state.data is None:
         st.session_state.data = load_data()
     df = st.session_state.data
@@ -175,7 +188,7 @@ def main_app():
             if uploaded_pdf and st.button("Process PDF"):
                 parsed_data = parse_pdf_data(uploaded_pdf)
                 if not parsed_data:
-                    st.error("No data extracted from the PDF. Please check the file format.")
+                    st.error("No data extracted from PDF. Check file format.")
                 else:
                     month_str = pdf_month.strftime("%Y-%m")
                     full_data = {field: parsed_data.get(field, 0.0) for field in fields_list}
@@ -187,24 +200,20 @@ def main_app():
 
     with tab1:
         df = manual_entry_form(df)
-        st.session_state.data = df  # Update session state
+        st.session_state.data = df
 
     with tab2:
         if not df.empty:
-            selected_metrics = st.multiselect("Metrics for Trend Analysis", fields_list, default=["Nett Profit /(Loss)"])
-            # Plot trends over all months
-            fig = px.line(df.sort_values("month"), x=pd.to_datetime(df["month"] + '-01'), y=selected_metrics, title="Financial Trends")
+            selected_metrics = st.multiselect("Metrics for Trend Analysis", 
+                                            fields_list, default=["Nett Profit /(Loss)"])
+            fig = px.line(df.sort_values("month"), x=pd.to_datetime(df["month"] + '-01'), 
+                         y=selected_metrics, title="Financial Trends")
             fig.update_layout(xaxis_title="Month", yaxis_title="Amount (R)")
             st.plotly_chart(fig)
 
-            # Month selector for detailed view
             unique_months = sorted(df["month"].unique())
             selected_month = st.selectbox("Select Month to View", ["All"] + unique_months)
-            if selected_month == "All":
-                display_df = df
-            else:
-                display_df = df[df["month"] == selected_month]
-            # Format numbers with currency
+            display_df = df if selected_month == "All" else df[df["month"] == selected_month]
             format_dict = {field: CURRENCY_FORMAT for field in fields_list}
             st.dataframe(display_df.style.format(format_dict))
 
@@ -228,19 +237,15 @@ def main_app():
             with col2:
                 if st.button("Cancel"):
                     st.session_state.confirm_clear = False
-        # Display entire dataset
         format_dict = {field: CURRENCY_FORMAT for field in fields_list}
         st.dataframe(df.style.format(format_dict))
 
 def main():
     """Entry point for the Streamlit app."""
-    st.set_page_config(page_title="Silver Finance", layout="wide")
     if not st.session_state.logged_in:
         login_form()
     else:
         main_app()
 
-if __name__ == "__main__":
-    main()
 if __name__ == "__main__":
     main()
