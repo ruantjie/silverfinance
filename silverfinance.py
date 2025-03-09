@@ -150,7 +150,7 @@ def main_app():
     with tab1:
         if not df.empty:
             st.subheader("Financial Trends")
-            selected_metrics = st.multiselect("Select Metrics", FIELDS, default=["Nett Profit /(Loss)"])
+            selected_metrics = st.multiselect("Select Metrics", FIELDS, default=["Nett Profit /(Loss)"], key="line_chart_metrics")
             fig = px.line(df, x="Month", y=selected_metrics, title="Performance Over Time")
             st.plotly_chart(fig)
             # Check for Alerts
@@ -161,7 +161,7 @@ def main_app():
     with tab2:
         if not df.empty:
             st.subheader("Monthly Financials Bar Chart")
-            selected_metrics = st.multiselect("Select Metrics", FIELDS, default=["Nett Profit /(Loss)"])
+            selected_metrics = st.multiselect("Select Metrics", FIELDS, default=["Nett Profit /(Loss)"], key="bar_chart_metrics")
             fig = px.bar(df, x="Month", y=selected_metrics, title="Monthly Financials")
             st.plotly_chart(fig)
 
@@ -169,9 +169,9 @@ def main_app():
         if not df.empty:
             st.subheader("Compare Months")
             months = sorted(df["Month"].unique())
-            month1 = st.selectbox("Select First Month", months, index=0)
-            month2 = st.selectbox("Select Second Month", months, index=1)
-            selected_fields = st.multiselect("Select Fields to Compare", FIELDS, default=["Nett Profit /(Loss)"])
+            month1 = st.selectbox("Select First Month", months, index=0, key="compare_month1")
+            month2 = st.selectbox("Select Second Month", months, index=1, key="compare_month2")
+            selected_fields = st.multiselect("Select Fields to Compare", FIELDS, default=["Nett Profit /(Loss)"], key="compare_fields")
             data1 = df[df["Month"] == month1][selected_fields].iloc[0]
             data2 = df[df["Month"] == month2][selected_fields].iloc[0]
             comparison = pd.DataFrame({"Field": selected_fields, month1: data1.values, month2: data2.values})
@@ -231,4 +231,4 @@ if __name__ == "__main__":
     if st.session_state.get("authenticated"):
         main_app()
     else:
-        login_page()
+        
