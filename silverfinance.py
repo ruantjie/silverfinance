@@ -153,10 +153,10 @@ def main_app():
   with tab1:
     if not df.empty:
         st.subheader("Financial Trends")
-        
+
         # Add a checkbox for quick comparison between turnover and food cost
         quick_compare = st.checkbox("Quick Compare: Turnover vs Food Cost", key="quick_compare")
-        
+
         # If the checkbox is checked, automatically use the specified metrics
         if quick_compare:
             selected_metrics = ["Nett turnover", "Total cost of sales"]
@@ -167,15 +167,16 @@ def main_app():
                 default=["Nett Profit /(Loss)"], 
                 key="line_chart_metrics"
             )
-        
+
         # Render the line chart
         fig = px.line(df, x="Month", y=selected_metrics, title="Performance Over Time")
         st.plotly_chart(fig)
-        
+
         # Alert check: if Nett Profit is below threshold, add an alert
         last_profit = df["Nett Profit /(Loss)"].iloc[-1]
         if last_profit < threshold:
             st.session_state.alerts.append(f"Nett Profit of R{last_profit:,.2f} is below the threshold!")
+
 
 
     with tab2:
