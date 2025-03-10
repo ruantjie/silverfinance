@@ -82,7 +82,8 @@ def parse_pdf(pdf_file):
             "Gross Profit": r"Gross Profit\s+([\d,]+\.\d{2})",
             "Expenses": r"Expenses\s+([\d,]+\.\d{2})",
             "Nett Profit /(Loss)": r"(-?[\d,]+\.\d{2})Nett Profit",
-            "Nett turnover": r"Nett Sales\s+[\d,]+\.\d{2}\s+([\d,]+\.\d{2})"
+            "Nett turnover": r"Nett Sales\s+[\d,]+\.\d{2}\s+([\d,]+\.\d{2})",
+            "Total cost of sales": r"([\d,]+\.\d{2})\s*\nEXPENSE CATEGORY"  # At end of cost section
         }
         
         for field, pattern in summary_patterns.items():
@@ -98,7 +99,16 @@ def parse_pdf(pdf_file):
             category = line[0].strip()
             usage = line[7]  # CAT USAGE is the 8th group (index 7)
             # Normalize category name consistently
-            category_key = category.lower().replace('&', 'and').replace('liq beer & ciders', 'liquor - beer and cider').replace('liq spirits', 'liquor - spirits').replace('liq wine', 'liquor - wine').replace('ice cream', 'ice-cream')
+            category_key = category.lower().replace('&', 'and')
+            # Specific mappings
+            if "liq beer" in category_key:
+                category_key = "liquor - beer and cider"
+            elif "liq spirits" in category_key:
+                category_key = "liquor - spirits"
+            elif "liq wine" in category_key:
+                category_key = "liquor - wine"
+            elif "ice cream" in category_key:
+                category_key = "ice-cream"
             if category_key in field_map:
                 amounts[field_map[category_key]] = float(usage.replace(',', ''))
             else:
