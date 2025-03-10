@@ -71,7 +71,7 @@ def parse_pdf(pdf_file):
     try:
         reader = PdfReader(pdf_file)
         text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-        st.write("Debug: First 2000 characters of PDF text:", text[:2000])
+        st.write("Debug: First 4000 characters of PDF text:", text[:4000])  # Increased for expense categories
         
         amounts = {}
         
@@ -83,7 +83,9 @@ def parse_pdf(pdf_file):
             "Expenses": r"Expenses\s+([\d,]+\.\d{2})",
             "Nett Profit /(Loss)": r"(-?[\d,]+\.\d{2})Nett Profit",
             "Nett turnover": r"Nett Sales\s+[\d,]+\.\d{2}\s+([\d,]+\.\d{2})",
-            "Total cost of sales": r"([\d,]+\.\d{2})\s*\nEXPENSE CATEGORY"  # At end of cost section
+            "Total cost of sales": r"([\d,]+\.\d{2})\s*\nEXPENSE CATEGORY",
+            "Gross turnover": r"Sales\s+([\d,]+\.\d{2})",  # Assuming same as Sales unless clarified
+            "Less VAT": r"Less Airtime\s+([\d,]+\.\d{2})"  # Assuming 0.00 unless full PDF shows VAT
         }
         
         for field, pattern in summary_patterns.items():
@@ -92,15 +94,13 @@ def parse_pdf(pdf_file):
                 value = match.group(1).replace(',', '')
                 amounts[field] = float(value)
         
-        # Improved food categories regex
+        # Cost categories
         category_lines = re.findall(r"[a-z]{2}\s+(.+?)\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})", text)
-        field_map = {f.lower(): f for f in FIELDS}  # Map normalized FIELDS to original
+        field_map = {f.lower(): f for f in FIELDS}
         for line in category_lines:
             category = line[0].strip()
-            usage = line[7]  # CAT USAGE is the 8th group (index 7)
-            # Normalize category name consistently
+            usage = line[7]
             category_key = category.lower().replace('&', 'and')
-            # Specific mappings
             if "liq beer" in category_key:
                 category_key = "liquor - beer and cider"
             elif "liq spirits" in category_key:
@@ -113,6 +113,15 @@ def parse_pdf(pdf_file):
                 amounts[field_map[category_key]] = float(usage.replace(',', ''))
             else:
                 st.warning(f"Category '{category}' not mapped to FIELDS.")
+        
+        # Expense categories (basic example, refine with full text)
+        expense_lines = re.findall(r"([A-Za-z][A-Za-z\s:,-]+?)\s+([\d,]+\.\d{2})\s+[\d.]+\s*\n", text, re.MULTILINE)
+        for exp_category, value in expense_lines:
+            exp_key = exp_category.strip().lower()
+            if exp_key in field_map:
+                amounts[field_map[exp_key]] = float(value.replace(',', ''))
+            else:
+                st.warning(f"Expense '{exp_category}' not mapped to FIELDS.")
         
         extracted = len(amounts)
         total = len(FIELDS)
