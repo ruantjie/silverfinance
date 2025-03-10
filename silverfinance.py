@@ -71,18 +71,18 @@ def parse_pdf(pdf_file):
     try:
         reader = PdfReader(pdf_file)
         text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-        st.write("Debug: First 500 characters of PDF text:", text[:500])
+        st.write("Debug: First 2000 characters of PDF text:", text[:2000])  # Increased for more visibility
         
         amounts = {}
         
-        # Summary fields with adjusted patterns
+        # Summary fields
         summary_patterns = {
             "Sales": r"Sales\s+([\d,]+\.\d{2})",
             "Direct Costs": r"Direct Costs\s+([\d,]+\.\d{2})",
             "Gross Profit": r"Gross Profit\s+([\d,]+\.\d{2})",
             "Expenses": r"Expenses\s+([\d,]+\.\d{2})",
-            "Nett Profit /(Loss)": r"(-?[\d,]+\.\d{2})Nett Profit",  # Handles negative, no space
-            "Nett turnover": r"Nett Sales\s+[\d,]+\.\d{2}\s+([\d,]+\.\d{2})"  # Assuming "Nett Sales" is "Nett turnover"
+            "Nett Profit /(Loss)": r"(-?[\d,]+\.\d{2})Nett Profit",
+            "Nett turnover": r"Nett Sales\s+[\d,]+\.\d{2}\s+([\d,]+\.\d{2})"
         }
         
         for field, pattern in summary_patterns.items():
@@ -91,15 +91,16 @@ def parse_pdf(pdf_file):
                 value = match.group(1).replace(',', '')
                 amounts[field] = float(value)
         
-        # Food categories using CAT USAGE
-        category_lines = re.findall(r"[a-z]{2}\s+(.+?)\s+\d+\.\d{2}\s+\d+\.\d{2}\s+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s+([\d,]+\.\d{2})", text)
+        # Improved food categories regex
+        category_lines = re.findall(r"[a-z]{2}\s+(.+?)\s+(?:\d+\.\d{2}\s+){4,6}([\d,]+\.\d{2})", text)
         for category, usage in category_lines:
-            # Normalize category name to match FIELDS
-            category = category.strip()
-            if category == "Butter & Cheese":  # Adjust case to match FIELDS
-                category = "Butter and cheese"
-            if category in FIELDS:
-                amounts[category] = float(usage.replace(',', ''))
+            category = category.strip().lower().replace('&', 'and')  # Normalize
+            # Map to FIELDS
+            field_map = {f.lower(): f for f in FIELDS}
+            if category in field_map:
+                amounts[field_map[category]] = float(usage.replace(',', ''))
+            else:
+                st.warning(f"Category '{category}' not found in FIELDS list.")
         
         extracted = len(amounts)
         total = len(FIELDS)
