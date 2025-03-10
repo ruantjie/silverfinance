@@ -3,41 +3,30 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import calendar
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 from pypdf import PdfReader
-import seaborn as sns
-import matplotlib.pyplot as plt
 
-# 🔒 Authentication setup
+# Session state initialization
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+if "alerts" not in st.session_state:
+    st.session_state.alerts = []
 
-# 📁 Field List aligned with PDF structure
+# Financial fields
 FIELDS = [
-    "Sales", "Less Airtime", "Net Sales", "zero rated part", "Direct Costs",
-    "Gross Profit", "Expenses", "Net Profit",
+    "Sales", "Direct Costs", "Gross Profit", "Expenses", "Net Profit",
     "Butter & Cheese", "Beverages", "Bread & Rolls", "Chicken", "Chips",
-    "Hot Beverages", "Dairy", "Desserts", "Fish", "Fruit & Veg", "Garnish",
-    "Groceries", "Liquor & Ciders", "Liquor", "Premade Sauces", 
-    "Meat", "Ice Cream", "Ribs", "Mushrooms", "Oil", "Spur Sauces",
-    "Advertising Promo", "Clean & Pest Control", "Delivery Expenses",
-    "Advertising General", "Franchise Fees", "General Gas", "Utilities & Energy",
-    "Entertainment Subscription", "Kids Entertainment", "Staff Uniforms",
-    "Repairs & Maintenance", "Printing Stationary", "Computer & IT Cost",
-    "Water", "Cutlery & Crockery", "Generator", "Packaging", "Staff Transport",
-    "Toys & Premiums", "Vat Paid", "Medical Expenses", "Support Staff",
-    "Staff Meals", "Government Dep Fund", "Salaries - Managers", "FOH Wages",
-    "BOH & Childminders", "UIF Contribution", "Staff Train&Welfare",
-    "Account & Audit Fees", "Bank Charge Save Dep", "Credit Card Comm",
-    "Maint : Building", "Maint : Furniture", "Maint : Equipment",
-    "Legal & License Fee", "Motor Vehicle Expens", "Insurance",
-    "Transport& Courier F", "Telephone & Faxes", "Rental Ops Cost",
-    "Security Non Ops", "Rates & Refuse", "Balance Sheet"
+    "Hot Beverages", "Dairy", "Desserts", "Fish", "Fruit & Veg",
+    "Meat", "Ice Cream", "Ribs", "Mushrooms", "Oil", "Advertising Promo",
+    "Clean & Pest Control", "Delivery Expenses", "Franchise Fees", "Utilities & Energy",
+    "Staff Uniforms", "Repairs & Maintenance", "Water", "Packaging", "Staff Transport",
+    "Salaries - Managers", "FOH Wages", "BOH & Childminders"
 ]
 
 DATA_FILE = "restaurant_finances.csv"
 
+# Month selection helper
 def select_statement_month(label="Select Statement Month"):
     current_year = datetime.today().year
     years = list(range(2000, current_year + 1))
@@ -50,10 +39,11 @@ def select_statement_month(label="Select Statement Month"):
     month_index = month_names.index(month_name) + 1
     return f"{year}-{month_index:02d}"
 
+# Login page
 def login_page():
     with st.form("auth"):
-        st.title("🍽 Silver Spur Analytics")
-        st.subheader("🔒 Restaurant Financial Portal")
+        st.title("🍽 Restaurant Analytics")
+        st.subheader("🔒 Financial Portal")
         user = st.text_input("👤 Username")
         pwd = st.text_input("🔑 Password", type="password")
         if st.form_submit_button("🚪 Login"):
@@ -63,159 +53,180 @@ def login_page():
             else:
                 st.error("Incorrect username or password.")
 
+# PDF parsing
 def parse_pdf(pdf_file):
     try:
         reader = PdfReader(pdf_file)
         text = "\n".join(page.extract_text() for page in reader.pages)
         amounts = {}
-        lines = [line.strip() for line in text.split('\n')]
         
-        # Extract summary values
-        summary_values = {
+        patterns = {
             "Sales": r"Sales\s+([\d,]+\.\d{2})",
-            "Direct Costs": r"Direct Costs\s+([\d,]+\.\d{2})\s+[\d.]+ %",
+            "Direct Costs": r"Direct Costs\s+([\d,]+\.\d{2})",
             "Gross Profit": r"Gross Profit\s+([\d,]+\.\d{2})",
-            "Expenses": r"Expenses\s+([\d,]+\.\d{2})\s+[\d.]+ %",
+            "Expenses": r"Expenses\s+([\d,]+\.\d{2})",
             "Net Profit": r"Net Profit\s+(-?[\d,]+\.\d{2})"
         }
-        
-        for field, pattern in summary_values.items():
+        for field, pattern in patterns.items():
             match = re.search(pattern, text)
             if match:
                 amounts[field] = float(match.group(1).replace(',', ''))
         
-        # Extract cost categories
-        cost_start = next(i for i, line in enumerate(lines) if "CAT COST CATEGORY" in line)
-        cost_end = next(i for i, line in enumerate(lines) if "38.56    38.78" in line)
-        
-        for line in lines[cost_start+1:cost_end]:
-            parts = re.split(r'\s{2,}', line)
-            if len(parts) >= 8 and parts[1] != '':
-                category = parts[1].strip()
-                usage = parts[7].replace(',', '')
-                amounts[category] = float(usage)
-        
-        # Extract expense categories
-        expense_start = next(i for i, line in enumerate(lines) if "CAT EXPENSE CATEGORY" in line)
-        expense_end = next(i for i, line in enumerate(lines) if "84.96    54.42" in line)
-        
-        for line in lines[expense_start+1:expense_end]:
-            parts = re.split(r'\s{2,}', line)
-            if len(parts) >= 6 and parts[1] != '':
-                category = parts[1].strip()
-                usage = parts[-1].replace(',', '')
-                amounts[category] = float(usage)
-        
-        # Fix duplicate names
-        amounts["Liquor & Ciders"] = amounts.pop("Liquider & Ciders", 0)
-        amounts["Liquor"] = amounts.pop("Liquider", 0)
+        # Feedback
+        extracted = len(amounts)
+        total = len(FIELDS)
+        st.info(f"Extracted {extracted}/{total} fields.")
+        missing = [f for f in FIELDS if f not in amounts]
+        if missing:
+            st.warning(f"Missing: {', '.join(missing[:5])}" + ("..." if len(missing) > 5 else ""))
         
         return amounts
     except Exception as e:
-        st.error(f"📄 PDF Error: {str(e)}")
+        st.error(f"PDF Error: {str(e)}")
         return {}
 
-def send_alerts():
-    st.header("🔔 Alerts and Notifications")
-    threshold = st.number_input("Set Nett Profit Threshold", value=0.0)
-    if "alerts" not in st.session_state:
-        st.session_state.alerts = []
+# Alerts
+def send_alerts(df):
+    st.header("🔔 Alerts")
+    threshold = st.number_input("Net Profit Threshold", value=0.0, step=1000.0)
+    st.session_state.alerts = []
+    if not df.empty:
+        low_profit = df[df["Net Profit"] < threshold]
+        for _, row in low_profit.iterrows():
+            st.session_state.alerts.append(f"⚠️ Low Net Profit in {row['Month'].strftime('%Y-%m')}: {row['Net Profit']:.2f}")
     if st.session_state.alerts:
-        st.write("### Alerts")
         for alert in st.session_state.alerts:
             st.error(alert)
-    return threshold
+    else:
+        st.success("No alerts.")
 
+# Main app
 def main_app():
-    st.title("💰 Silver Spur Financial Management")
+    st.title("💰 Restaurant Financial Dashboard")
 
+    # Load data
     try:
         df = pd.read_csv(DATA_FILE, parse_dates=["Month"])
-    except Exception:
+    except FileNotFoundError:
         df = pd.DataFrame(columns=["Month"] + FIELDS)
 
+    # Sidebar
     with st.sidebar:
         if st.button("🚪 Logout"):
             st.session_state.authenticated = False
             st.experimental_rerun()
-        st.header("📤 Data Import")
-        uploaded_pdf = st.file_uploader("Upload PDF Statement", type=["pdf"])
+        st.header("📤 Import Data")
+        uploaded_pdf = st.file_uploader("Upload PDF", type=["pdf"])
         if uploaded_pdf:
-            st.write("### Select Statement Month")
-            statement_month = select_statement_month("Statement Month")
+            month_str = select_statement_month("Statement Month")
+            month = pd.to_datetime(month_str + "-01")
             if st.button("✨ Process PDF"):
                 data = parse_pdf(uploaded_pdf)
                 if data:
-                    new_row = {"Month": statement_month}
-                    new_row.update(data)
+                    if month in df["Month"].values:
+                        overwrite = st.radio(f"Data for {month_str} exists. Overwrite?", ("No", "Yes"))
+                        if overwrite == "No":
+                            st.warning("Skipping upload.")
+                            return
+                        df = df[df["Month"] != month]
+                    new_row = {"Month": month, **data}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     df.to_csv(DATA_FILE, index=False)
-                    st.success("✅ PDF processed successfully!")
+                    st.success("✅ Processed!")
 
-    threshold = send_alerts()
+    # Alerts
+    send_alerts(df)
 
-    tabs = st.tabs([
-        "📈 Line Graph", "📊 Bar Chart", "📅 Compare Months", "📋 Cost Analysis",
-        "💹 Financial Ratios", "📝 Manual Entry", "🔄 Scenario Simulation",
-        "🔮 Forecasting", "📄 Data"
-    ])
+    # Tabs
+    tabs = st.tabs(["📈 Trends", "📊 Bars", "📅 Compare", "📋 Costs", "💹 Ratios", "📝 Entry", "📄 Data"])
     
-    # Tab 1: Line Graph
+    # Trends
     with tabs[0]:
         if not df.empty:
-            st.subheader("Financial Trends")
-            selected_metrics = st.multiselect(
-                "Select Metrics", FIELDS, default=["Net Profit"], key="line_metrics"
-            )
-            fig = px.line(df, x="Month", y=selected_metrics, title="Performance Over Time")
+            st.subheader("Trends")
+            metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Net Profit"], key="line")
+            fig = px.line(df, x="Month", y=metrics, title="Over Time")
             st.plotly_chart(fig)
     
-    # Tab 2: Bar Chart
+    # Bars
     with tabs[1]:
         if not df.empty:
-            st.subheader("Monthly Comparison")
-            selected_metrics = st.multiselect(
-                "Select Metrics", FIELDS, default=["Sales", "Net Profit"], key="bar_metrics"
-            )
-            fig = px.bar(df, x="Month", y=selected_metrics, barmode="group")
+            st.subheader("Monthly Breakdown")
+            metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Net Profit"], key="bar")
+            fig = px.bar(df, x="Month", y=metrics, barmode="group", title="By Month")
             st.plotly_chart(fig)
     
-    # Tab 3: Compare Months
+    # Compare
     with tabs[2]:
         if not df.empty:
-            st.subheader("Month Comparison")
-            months = df["Month"].unique()
+            st.subheader("Compare Months")
+            months = df["Month"].dt.strftime("%Y-%m").unique()
             col1, col2 = st.columns(2)
             with col1:
-                month1 = st.selectbox("Select Month 1", months)
+                month1 = pd.to_datetime(st.selectbox("Month 1", months) + "-01")
             with col2:
-                month2 = st.selectbox("Select Month 2", months)
-            compare_fields = st.multiselect("Select Fields", FIELDS)
-            
-            if compare_fields:
-                df_compare = df[df["Month"].isin([month1, month2])].set_index("Month")
-                st.dataframe(df_compare[compare_fields].T.style.highlight_min(axis=1))
+                month2 = pd.to_datetime(st.selectbox("Month 2", months, index=1 if len(months) > 1 else 0) + "-01")
+            fields = st.multiselect("Fields", FIELDS, default=["Sales", "Expenses", "Net Profit"])
+            if fields and month1 != month2:
+                df_compare = df[df["Month"].isin([month1, month2])].set_index("Month")[fields]
+                df_compare.index = df_compare.index.strftime("%Y-%m")
+                if len(df_compare) == 2:
+                    diff = df_compare.diff().iloc[1]
+                    pct_change = (df_compare.pct_change().iloc[1] * 100).replace([np.inf, -np.inf], np.nan)
+                    comparison_df = pd.concat([df_compare.T, diff.rename("Diff"), pct_change.rename("% Change")], axis=1)
+                    st.dataframe(comparison_df.style.format("{:.2f}", subset=df_compare.columns)
+                                 .format("{:.2f}", subset=["Diff"])
+                                 .format("{:.2f}%", subset=["% Change"]))
     
-    # Remaining tabs follow similar patterns (truncated for brevity)
-    # ...
+    # Costs
+    with tabs[3]:
+        if not df.empty:
+            st.subheader("Cost Breakdown")
+            cost_fields = [f for f in FIELDS if f not in ["Sales", "Gross Profit", "Net Profit"]]
+            month = pd.to_datetime(st.selectbox("Month", df["Month"].dt.strftime("%Y-%m")) + "-01")
+            month_data = df[df["Month"] == month][cost_fields].T
+            if not month_data.empty:
+                month_data.columns = ["Value"]
+                fig = px.pie(month_data, values="Value", names=month_data.index, title=f"Costs for {month.strftime('%Y-%m')}")
+                st.plotly_chart(fig)
     
-    # Tab 9: Data
-    with tabs[8]:
+    # Ratios
+    with tabs[4]:
+        if not df.empty:
+            st.subheader("Ratios")
+            df["Gross Margin"] = (df["Gross Profit"] / df["Sales"] * 100).fillna(0)
+            df["Net Margin"] = (df["Net Profit"] / df["Sales"] * 100).fillna(0)
+            fig = px.line(df, x="Month", y=["Gross Margin", "Net Margin"], title="Profit Margins")
+            st.plotly_chart(fig)
+    
+    # Manual Entry
+    with tabs[5]:
+        st.subheader("Manual Entry")
+        month_str = select_statement_month("Entry Month")
+        month = pd.to_datetime(month_str + "-01")
+        with st.form("manual_entry"):
+            data = {}
+            for field in ["Sales", "Direct Costs", "Expenses", "Net Profit"]:
+                data[field] = st.number_input(field, min_value=-1000000.0 if field == "Net Profit" else 0.0, value=0.0)
+            if st.form_submit_button("Save"):
+                if month in df["Month"].values:
+                    overwrite = st.radio(f"Data for {month_str} exists. Overwrite?", ("No", "Yes"))
+                    if overwrite == "Yes":
+                        df = df[df["Month"] != month]
+                new_row = {"Month": month, **data}
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                df.to_csv(DATA_FILE, index=False)
+                st.success("Saved!")
+    
+    # Data
+    with tabs[6]:
         st.subheader("Raw Data")
         st.dataframe(df)
-        st.download_button(
-            "Download CSV",
-            df.to_csv(index=False),
-            "financial_data.csv",
-            mime="text/csv"
-        )
+        st.download_button("Download CSV", df.to_csv(index=False), "financial_data.csv", "text/csv")
 
 if __name__ == "__main__":
-    st.set_page_config(page_title="Silver Spur Analytics", layout="wide")
-    if st.session_state.get("authenticated"):
-        main_app()
-    else:
-        login_page()
+    st.set_page_config(page_title="Restaurant Analytics", layout="wide")
+    if st.session_state.authenticated:
         main_app()
     else:
         login_page()
