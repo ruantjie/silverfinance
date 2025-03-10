@@ -66,11 +66,12 @@ def login_page():
             else:
                 st.error("Incorrect username or password.")
 
-# PDF parsing
+# Enhanced PDF parsing with debug output
 def parse_pdf(pdf_file):
     try:
         reader = PdfReader(pdf_file)
         text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
+        st.write("Debug: First 500 characters of PDF text:", text[:500])  # Show raw text
         
         amounts = {}
         patterns = {
@@ -194,9 +195,7 @@ def main_app():
     # Load data
     try:
         df = pd.read_csv(DATA_FILE)
-        # Ensure "Month" is datetime
         df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
-        # Align columns with FIELDS
         df = df[["Month"] + [col for col in FIELDS if col in df.columns]]
         st.write("Debug: Loaded DataFrame columns:", df.columns.tolist())
         st.write("Debug: First few rows:", df.head())
@@ -232,7 +231,6 @@ def main_app():
                         df = df[df["Month"] != month]
                     new_row = {"Month": month, **data}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                    # Ensure only FIELDS columns are kept and Month is datetime
                     df = df[["Month"] + [col for col in FIELDS if col in df.columns]]
                     df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
                     df.to_csv(DATA_FILE, index=False)
@@ -240,7 +238,6 @@ def main_app():
                     st.write("Debug: Updated DataFrame columns after upload:", df.columns.tolist())
                     st.write("Debug: Month column type after upload:", str(df["Month"].dtype))
         
-        # New Clear Data Feature
         st.header("🗑️ Clear Data")
         if st.button("Clear All Data"):
             df = pd.DataFrame(columns=["Month"] + FIELDS)
@@ -248,7 +245,7 @@ def main_app():
             df.to_csv(DATA_FILE, index=False)
             st.success("✅ All data cleared from CSV!")
             st.write("Debug: DataFrame columns after clearing:", df.columns.tolist())
-            st.rerun()  # Refresh the app to reflect the cleared state
+            st.rerun()
 
     # Alerts
     send_alerts(df)
@@ -256,14 +253,19 @@ def main_app():
     # Tabs
     tabs = st.tabs(["📈 Trends", "📊 Bars", "📅 Compare", "📋 Costs", "💹 Ratios", "🔗 Correlations", "📝 Entry", "📄 Data"])
 
-    # Trends
+    # Trends with enhanced validation
     with tabs[0]:
-        if not df.empty:
+        if not df.empty and len(df) > 0:  # Check for rows
             st.subheader("Trends")
             metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Nett Profit /(Loss)"], key="trends_metrics")
             if metrics and all(metric in df.columns for metric in metrics):
-                fig = px.line(df, x="Month", y=metrics, title="Over Time")
-                st.plotly_chart(fig)
+                # Ensure numeric data
+                plot_df = df[["Month"] + metrics].dropna(subset=metrics)
+                if not plot_df.empty:
+                    fig = px.line(plot_df, x="Month", y=metrics, title="Over Time")
+                    st.plotly_chart(fig)
+                else:
+                    st.warning("No valid data available for selected metrics.")
             else:
                 st.warning("Please select valid metrics that exist in the data.")
         else:
@@ -271,18 +273,22 @@ def main_app():
 
     # Bars
     with tabs[1]:
-        if not df.empty:
+        if not df.empty and len(df) > 0:
             st.subheader("Monthly Breakdown")
             metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Nett Profit /(Loss)"], key="bars_metrics")
             if metrics and all(metric in df.columns for metric in metrics):
-                fig = px.bar(df, x="Month", y=metrics, barmode="group", title="By Month")
-                st.plotly_chart(fig)
+                plot_df = df[["Month"] + metrics].dropna(subset=metrics)
+                if not plot_df.empty:
+                    fig = px.bar(plot_df, x="Month", y=metrics, barmode="group", title="By Month")
+                    st.plotly_chart(fig)
+                else:
+                    st.warning("No valid data available for selected metrics.")
             else:
                 st.warning("Please select valid metrics that exist in the data.")
     
     # Compare
     with tabs[2]:
-        if not df.empty:
+        if not df.empty and len(df) > 0:
             st.subheader("Compare Months")
             if df["Month"].dtype != "datetime64[ns]":
                 st.warning("Month column is not in datetime format. Converting...")
@@ -310,7 +316,7 @@ def main_app():
     
     # Costs
     with tabs[3]:
-        if not df.empty:
+        if not df.empty and len(df) > 0:
             st.subheader("Cost Breakdown")
             cost_fields = [f for f in FIELDS if f not in ["Sales", "Gross Profit", "Nett Profit /(Loss)"]]
             month = pd.to_datetime(st.selectbox("Month", df["Month"].dt.strftime("%Y-%m").dropna()) + "-01")
@@ -322,7 +328,7 @@ def main_app():
     
     # Ratios
     with tabs[4]:
-        if not df.empty:
+        if not df.empty and len(df) > 0:
             st.subheader("Ratios")
             df["Gross Margin"] = (df["Gross Profit"] / df["Sales"] * 100).fillna(0)
             df["Net Margin"] = (df["Nett Profit /(Loss)"] / df["Sales"] * 100).fillna(0)
@@ -334,7 +340,7 @@ def main_app():
     
     # Correlations
     with tabs[5]:
-        if not df.empty:
+        if not df.empty and len(df) > 0:
             st.subheader("Correlations with Sales")
             corr_fields = st.multiselect("Select fields to correlate with Sales", [f for f in FIELDS if f != "Sales"], default=["General gas", "Salaries and wages: -Management"])
             if corr_fields:
