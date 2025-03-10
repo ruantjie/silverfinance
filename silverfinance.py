@@ -239,6 +239,16 @@ def main_app():
                     st.success("✅ Processed!")
                     st.write("Debug: Updated DataFrame columns after upload:", df.columns.tolist())
                     st.write("Debug: Month column type after upload:", str(df["Month"].dtype))
+        
+        # New Clear Data Feature
+        st.header("🗑️ Clear Data")
+        if st.button("Clear All Data"):
+            df = pd.DataFrame(columns=["Month"] + FIELDS)
+            df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
+            df.to_csv(DATA_FILE, index=False)
+            st.success("✅ All data cleared from CSV!")
+            st.write("Debug: DataFrame columns after clearing:", df.columns.tolist())
+            st.rerun()  # Refresh the app to reflect the cleared state
 
     # Alerts
     send_alerts(df)
@@ -270,7 +280,7 @@ def main_app():
             else:
                 st.warning("Please select valid metrics that exist in the data.")
     
-    # Compare with fix
+    # Compare
     with tabs[2]:
         if not df.empty:
             st.subheader("Compare Months")
