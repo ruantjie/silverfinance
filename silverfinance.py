@@ -71,7 +71,7 @@ def parse_pdf(pdf_file):
     try:
         reader = PdfReader(pdf_file)
         text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-        st.write("Debug: First 2000 characters of PDF text:", text[:2000])  # Increased for more visibility
+        st.write("Debug: First 2000 characters of PDF text:", text[:2000])
         
         amounts = {}
         
@@ -92,15 +92,16 @@ def parse_pdf(pdf_file):
                 amounts[field] = float(value)
         
         # Improved food categories regex
-        category_lines = re.findall(r"[a-z]{2}\s+(.+?)\s+(?:\d+\.\d{2}\s+){4,6}([\d,]+\.\d{2})", text)
-        for category, usage in category_lines:
-            category = category.strip().lower().replace('&', 'and')  # Normalize
-            # Map to FIELDS
-            field_map = {f.lower(): f for f in FIELDS}
-            if category in field_map:
-                amounts[field_map[category]] = float(usage.replace(',', ''))
+        category_lines = re.findall(r"[a-z]{2}\s+(.+?)\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})", text)
+        field_map = {f.lower().replace('and', '&'): f for f in FIELDS}  # Reverse normalization for matching PDF
+        for line in category_lines:
+            category = line[0].strip()
+            usage = line[7]  # CAT USAGE is the 8th group (index 7)
+            category_key = category.lower().replace('&', 'and')
+            if category_key in field_map:
+                amounts[field_map[category_key]] = float(usage.replace(',', ''))
             else:
-                st.warning(f"Category '{category}' not found in FIELDS list.")
+                st.warning(f"Category '{category}' not mapped to FIELDS.")
         
         extracted = len(amounts)
         total = len(FIELDS)
