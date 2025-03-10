@@ -93,11 +93,12 @@ def parse_pdf(pdf_file):
         
         # Improved food categories regex
         category_lines = re.findall(r"[a-z]{2}\s+(.+?)\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})", text)
-        field_map = {f.lower().replace('and', '&'): f for f in FIELDS}  # Reverse normalization for matching PDF
+        field_map = {f.lower(): f for f in FIELDS}  # Map normalized FIELDS to original
         for line in category_lines:
             category = line[0].strip()
             usage = line[7]  # CAT USAGE is the 8th group (index 7)
-            category_key = category.lower().replace('&', 'and')
+            # Normalize category name consistently
+            category_key = category.lower().replace('&', 'and').replace('liq beer & ciders', 'liquor - beer and cider').replace('liq spirits', 'liquor - spirits').replace('liq wine', 'liquor - wine').replace('ice cream', 'ice-cream')
             if category_key in field_map:
                 amounts[field_map[category_key]] = float(usage.replace(',', ''))
             else:
