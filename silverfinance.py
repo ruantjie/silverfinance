@@ -13,16 +13,28 @@ if "authenticated" not in st.session_state:
 if "alerts" not in st.session_state:
     st.session_state.alerts = []
 
-# Expanded fields list based on your PDF
+# Updated FIELDS based on your actual PDF columns
 FIELDS = [
-    "Sales", "Direct Costs", "Gross Profit", "Expenses", "Nett Profit",  # Summary fields (note "Nett" spelling from PDF)
-    "Generator", "Packaging", "Staff Transport", "Toys & Premiums", "Vat Paid", "Medical Expenses",
-    "Support Staff", "Staff Meals", "Govirment Dep Fund", "Salaries - Managers", "FOH Wages",
-    "BOH & Childminders", "UIF Contribution", "Staff Train&Welfare", "Account & Audt Fees",
-    "Bank Charge Save Dep", "Credit Card Comm", "Maint : Building", "Maint : Furniture",
-    "Maint : Equipment", "Legal & License Fee", "Motor Vehicle Expons", "Insurance",
-    "Transport& Courier F", "Telephone & Faxes", "Rental Ops Cost", "Securty Non Ops",
-    "Rates & Refuse", "Balance Sheet"
+    "Sales", "Direct Costs", "Gross Profit", "Expenses", "Nett Profit /(Loss)",  # Main summary fields
+    "Gross turnover", "Less VAT", "Nett turnover", "Total cost of sales",
+    "Beverages", "Bread and rolls", "Butter and cheese", "Chicken", "Chips",
+    "Dairy", "Delivery expenses", "Desserts", "Fish", "Fruit and veg",
+    "Garnish", "Groceries", "Hot beverages", "Ice-cream", "Liquor - beer and cider",
+    "Liquor - spirits", "Liquor - wine", "Meat", "Mushrooms", "Oil", "Ribs",
+    "Premade Sauces", "Spur sauces", "Other income", "Breakages recovery",
+    "Interest received", "Transport", "Refund on old oil", "Total variable overheads",
+    "Accounting and audit fees", "Bank charges", "Breakages and replacements",
+    "Cleaning and pest control", "Computer expenses", "Credit card commission Paid",
+    "Donations", "Entertainment Costs", "General gas", "Interest paid",
+    "Legal and Licence fees", "Printing, stationery and menus", "Repairs and maintenance",
+    "Salaries and wages: -Management", "Salaries and wages: -Production staff (Incl Casuals)",
+    "Salaries and wages: -Waitrons (Incl Casuals)", "Salaries and wages: -Director",
+    "Salaries and wages: -Company portion UIF and SDL", "Staff transport",
+    "Staff uniforms", "Staff meals", "Staff medical", "Staff welfare",
+    "Telephone expenses", "Waste removal", "Total fixed overheads",
+    "Electricity, water, refuse, sewerage and rates", "Insurance - HIC",
+    "Insurance - Sanlam", "Rent paid", "Security expenses", "Marketing Fees",
+    "Marketing general", "Spur Marketing fee", "Spur Franchise Fee"
 ]
 
 DATA_FILE = "restaurant_finances.csv"
@@ -54,7 +66,7 @@ def login_page():
             else:
                 st.error("Incorrect username or password.")
 
-# Updated PDF parsing
+# Updated PDF parsing to match your actual PDF
 def parse_pdf(pdf_file):
     try:
         reader = PdfReader(pdf_file)
@@ -62,40 +74,80 @@ def parse_pdf(pdf_file):
         
         amounts = {}
         patterns = {
+            "Gross turnover": r"Gross turnover\s+([\d,]+\.\d{2})",
+            "Less VAT": r"Less VAT\s+([\d,]+\.\d{2})",
+            "Nett turnover": r"Nett turnover\s+([\d,]+\.\d{2})",
+            "Total cost of sales": r"Total cost of sales\s+([\d,]+\.\d{2})",
+            "Beverages": r"Beverages\s+([\d,]+\.\d{2})",
+            "Bread and rolls": r"Bread and rolls\s+([\d,]+\.\d{2})",
+            "Butter and cheese": r"Butter and cheese\s+([\d,]+\.\d{2})",
+            "Chicken": r"Chicken\s+([\d,]+\.\d{2})",
+            "Chips": r"Chips\s+([\d,]+\.\d{2})",
+            "Dairy": r"Dairy\s+([\d,]+\.\d{2})",
+            "Delivery expenses": r"Delivery expenses\s+([\d,]+\.\d{2})",
+            "Desserts": r"Desserts\s+([\d,]+\.\d{2})",
+            "Fish": r"Fish\s+([\d,]+\.\d{2})",
+            "Fruit and veg": r"Fruit and veg\s+([\d,]+\.\d{2})",
+            "Garnish": r"Garnish\s+([\d,]+\.\d{2})",
+            "Groceries": r"Groceries\s+([\d,]+\.\d{2})",
+            "Hot beverages": r"Hot beverages\s+([\d,]+\.\d{2})",
+            "Ice-cream": r"Ice-cream\s+([\d,]+\.\d{2})",
+            "Liquor - beer and cider": r"Liquor - beer and cider\s+([\d,]+\.\d{2})",
+            "Liquor - spirits": r"Liquor - spirits\s+([\d,]+\.\d{2})",
+            "Liquor - wine": r"Liquor - wine\s+([\d,]+\.\d{2})",
+            "Meat": r"Meat\s+([\d,]+\.\d{2})",
+            "Mushrooms": r"Mushrooms\s+([\d,]+\.\d{2})",
+            "Oil": r"Oil\s+([\d,]+\.\d{2})",
+            "Ribs": r"Ribs\s+([\d,]+\.\d{2})",
+            "Premade Sauces": r"Premade Sauces\s+([\d,]+\.\d{2})",
+            "Spur sauces": r"Spur sauces\s+([\d,]+\.\d{2})",
+            "Gross Profit": r"Gross profit\s+([\d,]+\.\d{2})",
+            "Other income": r"Other income\s+([\d,]+\.\d{2})",
+            "Breakages recovery": r"Breakages recovery\s+([\d,]+\.\d{2})",
+            "Interest received": r"Interest received\s+([\d,]+\.\d{2})",
+            "Transport": r"Transport\s+([\d,]+\.\d{2})",
+            "Refund on old oil": r"Refund on old oil\s+([\d,]+\.\d{2})",
+            "Total variable overheads": r"Total variable overheads\s+([\d,]+\.\d{2})",
+            "Accounting and audit fees": r"Accounting and audit fees\s+([\d,]+\.\d{2})",
+            "Bank charges": r"Bank charges\s+([\d,]+\.\d{2})",
+            "Breakages and replacements": r"Breakages and replacements\s+([\d,]+\.\d{2})",
+            "Cleaning and pest control": r"Cleaning and pest control\s+([\d,]+\.\d{2})",
+            "Computer expenses": r"Computer expenses\s+([\d,]+\.\d{2})",
+            "Credit card commission Paid": r"Credit card commission Paid\s+([\d,]+\.\d{2})",
+            "Donations": r"Donations\s+([\d,]+\.\d{2})",
+            "Entertainment Costs": r"Entertainment Costs\s+([\d,]+\.\d{2})",
+            "General gas": r"General gas\s+([\d,]+\.\d{2})",
+            "Interest paid": r"Interest paid\s+([\d,]+\.\d{2})",
+            "Legal and Licence fees": r"Legal and Licence fees\s+([\d,]+\.\d{2})",
+            "Printing, stationery and menus": r"Printing, stationery and menus\s+([\d,]+\.\d{2})",
+            "Repairs and maintenance": r"Repairs and maintenance\s+([\d,]+\.\d{2})",
+            "Salaries and wages: -Management": r"Salaries and wages: -Management\s+([\d,]+\.\d{2})",
+            "Salaries and wages: -Production staff (Incl Casuals)": r"Salaries and wages: -Production staff \(Incl Casuals\)\s+([\d,]+\.\d{2})",
+            "Salaries and wages: -Waitrons (Incl Casuals)": r"Salaries and wages: -Waitrons \(Incl Casuals\)\s+([\d,]+\.\d{2})",
+            "Salaries and wages: -Director": r"Salaries and wages: -Director\s+([\d,]+\.\d{2})",
+            "Salaries and wages: -Company portion UIF and SDL": r"Salaries and wages: -Company portion UIF and SDL\s+([\d,]+\.\d{2})",
+            "Staff transport": r"Staff transport\s+([\d,]+\.\d{2})",
+            "Staff uniforms": r"Staff uniforms\s+([\d,]+\.\d{2})",
+            "Staff meals": r"Staff meals\s+([\d,]+\.\d{2})",
+            "Staff medical": r"Staff medical\s+([\d,]+\.\d{2})",
+            "Staff welfare": r"Staff welfare\s+([\d,]+\.\d{2})",
+            "Telephone expenses": r"Telephone expenses\s+([\d,]+\.\d{2})",
+            "Waste removal": r"Waste removal\s+([\d,]+\.\d{2})",
+            "Total fixed overheads": r"Total fixed overheads\s+([\d,]+\.\d{2})",
+            "Electricity, water, refuse, sewerage and rates": r"Electricity, water, refuse, sewerage and rates\s+([\d,]+\.\d{2})",
+            "Insurance - HIC": r"Insurance - HIC\s+([\d,]+\.\d{2})",
+            "Insurance - Sanlam": r"Insurance - Sanlam\s+([\d,]+\.\d{2})",
+            "Rent paid": r"Rent paid\s+([\d,]+\.\d{2})",
+            "Security expenses": r"Security expenses\s+([\d,]+\.\d{2})",
+            "Marketing Fees": r"Marketing Fees\s+([\d,]+\.\d{2})",
+            "Marketing general": r"Marketing general\s+([\d,]+\.\d{2})",
+            "Spur Marketing fee": r"Spur Marketing fee\s+([\d,]+\.\d{2})",
+            "Spur Franchise Fee": r"Spur Franchise Fee\s+([\d,]+\.\d{2})",
             "Sales": r"Sales\s+([\d,]+\.\d{2})",
             "Direct Costs": r"Direct Costs\s+([\d,]+\.\d{2})",
             "Gross Profit": r"Gross Profit\s+([\d,]+\.\d{2})",
             "Expenses": r"Expenses\s+([\d,]+\.\d{2})",
-            "Nett Profit": r"Nett Profit\s+(-?[\d,]+\.\d{2})",
-            "Generator": r"Generator.*?\$([\d,]+\.\d{2})",
-            "Packaging": r"Packaging.*?\$([\d,]+\.\d{2})",
-            "Staff Transport": r"Staff Transport.*?\$([\d,]+\.\d{2})",
-            "Toys & Premiums": r"Toys & Premiums.*?\$([\d,]+\.\d{2})",
-            "Vat Paid": r"Vat Paid.*?\$([\d,]+\.\d{2})",
-            "Medical Expenses": r"Medical Expenses.*?\$([\d,]+\.\d{2})",
-            "Support Staff": r"Support Staff.*?\$([\d,]+\.\d{2})",
-            "Staff Meals": r"Staff Meals.*?\$([\d,]+\.\d{2})",
-            "Govirment Dep Fund": r"Govirment Dep Fund.*?\$([\d,]+\.\d{2})",
-            "Salaries - Managers": r"Salaries - Managers.*?\$([\d,]+\.\d{2})",
-            "FOH Wages": r"FOH Wages.*?\$([\d,]+\.\d{2})",
-            "BOH & Childminders": r"BOH & Childminders.*?\$([\d,]+\.\d{2})",
-            "UIF Contribution": r"UIF Contribution.*?\$([\d,]+\.\d{2})",
-            "Staff Train&Welfare": r"Staff Train&Welfare.*?\$([\d,]+\.\d{2})",
-            "Account & Audt Fees": r"Account & Audt Fees.*?\$([\d,]+\.\d{2})",
-            "Bank Charge Save Dep": r"Bank Charge Save Dep.*?\$([\d,]+\.\d{2})",
-            "Credit Card Comm": r"Credit Card Comm.*?\$([\d,]+\.\d{2})",
-            "Maint : Building": r"Maint : Building.*?\$([\d,]+\.\d{2})",
-            "Maint : Furniture": r"Maint : Furniture.*?\$([\d,]+\.\d{2})",
-            "Maint : Equipment": r"Maint : Equipment.*?\$([\d,]+\.\d{2})",
-            "Legal & License Fee": r"Legal & License Fee.*?\$([\d,]+\.\d{2})",
-            "Motor Vehicle Expons": r"Motor Vehicle Expons.*?\$([\d,]+\.\d{2})",
-            "Insurance": r"Insurance.*?\$([\d,]+\.\d{2})",
-            "Transport& Courier F": r"Transport& Courier F.*?\$([\d,]+\.\d{2})",
-            "Telephone & Faxes": r"Telephone & Faxes.*?\$([\d,]+\.\d{2})",
-            "Rental Ops Cost": r"Rental Ops Cost.*?\$([\d,]+\.\d{2})",
-            "Securty Non Ops": r"Securty Non Ops.*?\$([\d,]+\.\d{2})",
-            "Rates & Refuse": r"Rates & Refuse.*?\$([\d,]+\.\d{2})",
-            "Balance Sheet": r"Balance Sheet.*?\$(-?[\d,]+\.\d{2})"
+            "Nett Profit /(Loss)": r"Nett Profit /\(Loss\)\s+(-?[\d,]+\.\d{2})"
         }
         
         for field, pattern in patterns.items():
@@ -116,19 +168,19 @@ def parse_pdf(pdf_file):
         st.error(f"PDF Error: {str(e)}")
         return {}
 
-# Alerts with KeyError fix
+# Alerts
 def send_alerts(df):
     st.header("🔔 Alerts")
     threshold = st.number_input("Nett Profit Threshold", value=0.0, step=1000.0)
     if not df.empty:
-        if "Nett Profit" in df.columns:
-            low_profit = df[df["Nett Profit"] < threshold]
+        if "Nett Profit /(Loss)" in df.columns:
+            low_profit = df[df["Nett Profit /(Loss)"] < threshold]
             for _, row in low_profit.iterrows():
-                alert = f"⚠️ Low Nett Profit in {row['Month'].strftime('%Y-%m')}: {row['Nett Profit']:.2f}"
+                alert = f"⚠️ Low Nett Profit in {row['Month'].strftime('%Y-%m')}: {row['Nett Profit /(Loss)']:.2f}"
                 if alert not in st.session_state.alerts:
                     st.session_state.alerts.append(alert)
         else:
-            st.warning("Nett Profit column not found in data. Upload a PDF or enter data manually.")
+            st.warning("Nett Profit /(Loss) column not found in data. Upload a PDF or enter data manually.")
     if st.session_state.alerts:
         for alert in st.session_state.alerts:
             st.error(alert)
@@ -142,6 +194,8 @@ def main_app():
     # Load data
     try:
         df = pd.read_csv(DATA_FILE, parse_dates=["Month"])
+        # Align columns with FIELDS
+        df = df[["Month"] + [col for col in FIELDS if col in df.columns]]
         st.write("Debug: Loaded DataFrame columns:", df.columns.tolist())
         st.write("Debug: First few rows:", df.head())
     except FileNotFoundError:
@@ -173,6 +227,8 @@ def main_app():
                         df = df[df["Month"] != month]
                     new_row = {"Month": month, **data}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    # Ensure only FIELDS columns are kept
+                    df = df[["Month"] + [col for col in FIELDS if col in df.columns]]
                     df.to_csv(DATA_FILE, index=False)
                     st.success("✅ Processed!")
                     st.write("Debug: Updated DataFrame columns after upload:", df.columns.tolist())
@@ -183,11 +239,11 @@ def main_app():
     # Tabs
     tabs = st.tabs(["📈 Trends", "📊 Bars", "📅 Compare", "📋 Costs", "💹 Ratios", "🔗 Correlations", "📝 Entry", "📄 Data"])
 
-    # Trends with ValueError fix
+    # Trends with unique key
     with tabs[0]:
         if not df.empty:
             st.subheader("Trends")
-            metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Nett Profit"])
+            metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Nett Profit /(Loss)"], key="trends_metrics")
             if metrics and all(metric in df.columns for metric in metrics):
                 fig = px.line(df, x="Month", y=metrics, title="Over Time")
                 st.plotly_chart(fig)
@@ -196,11 +252,11 @@ def main_app():
         else:
             st.warning("No data available. Upload a PDF or enter data manually.")
 
-    # Bars
+    # Bars with unique key
     with tabs[1]:
         if not df.empty:
             st.subheader("Monthly Breakdown")
-            metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Nett Profit"])
+            metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Nett Profit /(Loss)"], key="bars_metrics")
             if metrics and all(metric in df.columns for metric in metrics):
                 fig = px.bar(df, x="Month", y=metrics, barmode="group", title="By Month")
                 st.plotly_chart(fig)
@@ -217,7 +273,7 @@ def main_app():
                 month1 = pd.to_datetime(st.selectbox("Month 1", months) + "-01")
             with col2:
                 month2 = pd.to_datetime(st.selectbox("Month 2", months, index=1 if len(months) > 1 else 0) + "-01")
-            fields = st.multiselect("Fields", FIELDS, default=["Sales", "Expenses", "Nett Profit"])
+            fields = st.multiselect("Fields", FIELDS, default=["Sales", "Expenses", "Nett Profit /(Loss)"])
             if fields and month1 != month2:
                 df_compare = df[df["Month"].isin([month1, month2])].set_index("Month")[fields]
                 df_compare.index = df_compare.index.strftime("%Y-%m")
@@ -233,7 +289,7 @@ def main_app():
     with tabs[3]:
         if not df.empty:
             st.subheader("Cost Breakdown")
-            cost_fields = [f for f in FIELDS if f not in ["Sales", "Gross Profit", "Nett Profit"]]
+            cost_fields = [f for f in FIELDS if f not in ["Sales", "Gross Profit", "Nett Profit /(Loss)"]]
             month = pd.to_datetime(st.selectbox("Month", df["Month"].dt.strftime("%Y-%m")) + "-01")
             month_data = df[df["Month"] == month][cost_fields].T
             if not month_data.empty:
@@ -246,8 +302,10 @@ def main_app():
         if not df.empty:
             st.subheader("Ratios")
             df["Gross Margin"] = (df["Gross Profit"] / df["Sales"] * 100).fillna(0)
-            df["Net Margin"] = (df["Nett Profit"] / df["Sales"] * 100).fillna(0)
-            df["Labor to Turnover"] = ((df["Salaries - Managers"].fillna(0) + df["FOH Wages"].fillna(0) + df["BOH & Childminders"].fillna(0)) / df["Sales"] * 100).fillna(0)
+            df["Net Margin"] = (df["Nett Profit /(Loss)"] / df["Sales"] * 100).fillna(0)
+            df["Labor to Turnover"] = ((df["Salaries and wages: -Management"].fillna(0) + 
+                                        df["Salaries and wages: -Production staff (Incl Casuals)"].fillna(0) + 
+                                        df["Salaries and wages: -Waitrons (Incl Casuals)"].fillna(0)) / df["Sales"] * 100).fillna(0)
             fig = px.line(df, x="Month", y=["Gross Margin", "Net Margin", "Labor to Turnover"], title="Ratios Over Time")
             st.plotly_chart(fig)
     
@@ -255,7 +313,7 @@ def main_app():
     with tabs[5]:
         if not df.empty:
             st.subheader("Correlations with Sales")
-            corr_fields = st.multiselect("Select fields to correlate with Sales", [f for f in FIELDS if f != "Sales"], default=["Generator", "Salaries - Managers"])
+            corr_fields = st.multiselect("Select fields to correlate with Sales", [f for f in FIELDS if f != "Sales"], default=["General gas", "Salaries and wages: -Management"])
             if corr_fields:
                 corr_matrix = df[["Sales"] + corr_fields].corr()
                 fig = px.imshow(corr_matrix, text_auto=True, title="Correlation Heatmap")
@@ -272,7 +330,7 @@ def main_app():
         with st.form("manual_entry"):
             data = {}
             for field in FIELDS:
-                data[field] = st.number_input(field, min_value=-1000000.0 if field in ["Nett Profit", "Balance Sheet"] else 0.0, value=0.0)
+                data[field] = st.number_input(field, min_value=-1000000.0 if field == "Nett Profit /(Loss)" else 0.0, value=0.0)
             if st.form_submit_button("Save"):
                 if month in df["Month"].values:
                     overwrite = st.radio(f"Data for {month_str} exists. Overwrite?", ("No", "Yes"))
