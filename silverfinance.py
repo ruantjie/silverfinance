@@ -13,7 +13,7 @@ if "authenticated" not in st.session_state:
 if "alerts" not in st.session_state:
     st.session_state.alerts = []
 
-# Updated FIELDS based on your actual PDF columns
+# FIELDS based on your actual PDF columns
 FIELDS = [
     "Sales", "Direct Costs", "Gross Profit", "Expenses", "Nett Profit /(Loss)",  # Main summary fields
     "Gross turnover", "Less VAT", "Nett turnover", "Total cost of sales",
@@ -66,7 +66,7 @@ def login_page():
             else:
                 st.error("Incorrect username or password.")
 
-# Updated PDF parsing to match your actual PDF
+# PDF parsing
 def parse_pdf(pdf_file):
     try:
         reader = PdfReader(pdf_file)
@@ -193,17 +193,22 @@ def main_app():
 
     # Load data
     try:
-        df = pd.read_csv(DATA_FILE, parse_dates=["Month"])
+        df = pd.read_csv(DATA_FILE)
+        # Ensure "Month" is datetime
+        df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
         # Align columns with FIELDS
         df = df[["Month"] + [col for col in FIELDS if col in df.columns]]
         st.write("Debug: Loaded DataFrame columns:", df.columns.tolist())
         st.write("Debug: First few rows:", df.head())
+        st.write("Debug: Month column type:", str(df["Month"].dtype))
     except FileNotFoundError:
         df = pd.DataFrame(columns=["Month"] + FIELDS)
+        df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
         st.write("Debug: Initialized empty DataFrame with columns:", df.columns.tolist())
     except pd.errors.ParserError as e:
         st.error(f"CSV Error: {e}")
         df = pd.DataFrame(columns=["Month"] + FIELDS)
+        df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
         st.write("Debug: Initialized empty DataFrame due to CSV error with columns:", df.columns.tolist())
 
     # Sidebar
@@ -227,11 +232,13 @@ def main_app():
                         df = df[df["Month"] != month]
                     new_row = {"Month": month, **data}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                    # Ensure only FIELDS columns are kept
+                    # Ensure only FIELDS columns are kept and Month is datetime
                     df = df[["Month"] + [col for col in FIELDS if col in df.columns]]
+                    df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
                     df.to_csv(DATA_FILE, index=False)
                     st.success("✅ Processed!")
                     st.write("Debug: Updated DataFrame columns after upload:", df.columns.tolist())
+                    st.write("Debug: Month column type after upload:", str(df["Month"].dtype))
 
     # Alerts
     send_alerts(df)
@@ -239,7 +246,7 @@ def main_app():
     # Tabs
     tabs = st.tabs(["📈 Trends", "📊 Bars", "📅 Compare", "📋 Costs", "💹 Ratios", "🔗 Correlations", "📝 Entry", "📄 Data"])
 
-    # Trends with unique key
+    # Trends
     with tabs[0]:
         if not df.empty:
             st.subheader("Trends")
@@ -252,7 +259,7 @@ def main_app():
         else:
             st.warning("No data available. Upload a PDF or enter data manually.")
 
-    # Bars with unique key
+    # Bars
     with tabs[1]:
         if not df.empty:
             st.subheader("Monthly Breakdown")
@@ -263,34 +270,40 @@ def main_app():
             else:
                 st.warning("Please select valid metrics that exist in the data.")
     
-    # Compare
+    # Compare with fix
     with tabs[2]:
         if not df.empty:
             st.subheader("Compare Months")
-            months = df["Month"].dt.strftime("%Y-%m").unique()
-            col1, col2 = st.columns(2)
-            with col1:
-                month1 = pd.to_datetime(st.selectbox("Month 1", months) + "-01")
-            with col2:
-                month2 = pd.to_datetime(st.selectbox("Month 2", months, index=1 if len(months) > 1 else 0) + "-01")
-            fields = st.multiselect("Fields", FIELDS, default=["Sales", "Expenses", "Nett Profit /(Loss)"])
-            if fields and month1 != month2:
-                df_compare = df[df["Month"].isin([month1, month2])].set_index("Month")[fields]
-                df_compare.index = df_compare.index.strftime("%Y-%m")
-                if len(df_compare) == 2:
-                    diff = df_compare.diff().iloc[1]
-                    pct_change = (df_compare.pct_change().iloc[1] * 100).replace([np.inf, -np.inf], np.nan)
-                    comparison_df = pd.concat([df_compare.T, diff.rename("Diff"), pct_change.rename("% Change")], axis=1)
-                    st.dataframe(comparison_df.style.format("{:.2f}", subset=df_compare.columns)
-                                 .format("{:.2f}", subset=["Diff"])
-                                 .format("{:.2f}%", subset=["% Change"]))
+            if df["Month"].dtype != "datetime64[ns]":
+                st.warning("Month column is not in datetime format. Converting...")
+                df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
+            months = df["Month"].dt.strftime("%Y-%m").dropna().unique()
+            if len(months) > 0:
+                col1, col2 = st.columns(2)
+                with col1:
+                    month1 = pd.to_datetime(st.selectbox("Month 1", months) + "-01")
+                with col2:
+                    month2 = pd.to_datetime(st.selectbox("Month 2", months, index=1 if len(months) > 1 else 0) + "-01")
+                fields = st.multiselect("Fields", FIELDS, default=["Sales", "Expenses", "Nett Profit /(Loss)"])
+                if fields and month1 != month2:
+                    df_compare = df[df["Month"].isin([month1, month2])].set_index("Month")[fields]
+                    df_compare.index = df_compare.index.strftime("%Y-%m")
+                    if len(df_compare) == 2:
+                        diff = df_compare.diff().iloc[1]
+                        pct_change = (df_compare.pct_change().iloc[1] * 100).replace([np.inf, -np.inf], np.nan)
+                        comparison_df = pd.concat([df_compare.T, diff.rename("Diff"), pct_change.rename("% Change")], axis=1)
+                        st.dataframe(comparison_df.style.format("{:.2f}", subset=df_compare.columns)
+                                     .format("{:.2f}", subset=["Diff"])
+                                     .format("{:.2f}%", subset=["% Change"]))
+            else:
+                st.warning("No valid months available for comparison.")
     
     # Costs
     with tabs[3]:
         if not df.empty:
             st.subheader("Cost Breakdown")
             cost_fields = [f for f in FIELDS if f not in ["Sales", "Gross Profit", "Nett Profit /(Loss)"]]
-            month = pd.to_datetime(st.selectbox("Month", df["Month"].dt.strftime("%Y-%m")) + "-01")
+            month = pd.to_datetime(st.selectbox("Month", df["Month"].dt.strftime("%Y-%m").dropna()) + "-01")
             month_data = df[df["Month"] == month][cost_fields].T
             if not month_data.empty:
                 month_data.columns = ["Value"]
@@ -340,11 +353,13 @@ def main_app():
                         df = df[df["Month"] != month]
                         new_row = {"Month": month, **data}
                         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                        df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
                         df.to_csv(DATA_FILE, index=False)
                         st.success("Saved!")
                 else:
                     new_row = {"Month": month, **data}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                    df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
                     df.to_csv(DATA_FILE, index=False)
                     st.success("Saved!")
     
