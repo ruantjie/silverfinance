@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import calendar
 from datetime import datetime
 import re
 from pypdf import PdfReader
@@ -116,34 +117,41 @@ def parse_pdf(pdf_file):
         st.error(f"PDF Error: {str(e)}")
         return {}
 
-# Alerts
+# Alerts with fix for KeyError
 def send_alerts(df):
     st.header("🔔 Alerts")
     threshold = st.number_input("Nett Profit Threshold", value=0.0, step=1000.0)
     if not df.empty:
-        low_profit = df[df["Nett Profit"] < threshold]
-        for _, row in low_profit.iterrows():
-            alert = f"⚠️ Low Nett Profit in {row['Month'].strftime('%Y-%m')}: {row['Nett Profit']:.2f}"
-            if alert not in st.session_state.alerts:
-                st.session_state.alerts.append(alert)
+        if "Nett Profit" in df.columns:  # Check if column exists
+            low_profit = df[df["Nett Profit"] < threshold]
+            for _, row in low_profit.iterrows():
+                alert = f"⚠️ Low Nett Profit in {row['Month'].strftime('%Y-%m')}: {row['Nett Profit']:.2f}"
+                if alert not in st.session_state.alerts:
+                    st.session_state.alerts.append(alert)
+        else:
+            st.warning("Nett Profit column not found in data. Upload a PDF or enter data manually.")
     if st.session_state.alerts:
         for alert in st.session_state.alerts:
             st.error(alert)
     else:
         st.success("No alerts.")
 
-# Main app
+# Main app with debug output
 def main_app():
     st.title("💰 Silver Spur Financial Dashboard")
 
     # Load data
     try:
         df = pd.read_csv(DATA_FILE, parse_dates=["Month"])
+        st.write("Debug: Loaded DataFrame columns:", df.columns.tolist())  # Debug output
+        st.write("Debug: First few rows:", df.head())  # Debug output
     except FileNotFoundError:
         df = pd.DataFrame(columns=["Month"] + FIELDS)
+        st.write("Debug: Initialized empty DataFrame with columns:", df.columns.tolist())
     except pd.errors.ParserError as e:
         st.error(f"CSV Error: {e}")
         df = pd.DataFrame(columns=["Month"] + FIELDS)
+        st.write("Debug: Initialized empty DataFrame due to CSV error with columns:", df.columns.tolist())
 
     # Sidebar
     with st.sidebar:
@@ -168,6 +176,7 @@ def main_app():
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     df.to_csv(DATA_FILE, index=False)
                     st.success("✅ Processed!")
+                    st.write("Debug: Updated DataFrame columns after upload:", df.columns.tolist())  # Debug output
 
     # Alerts
     send_alerts(df)
