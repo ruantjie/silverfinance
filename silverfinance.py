@@ -61,7 +61,6 @@ def parse_pdf(pdf_file):
         text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
         
         amounts = {}
-        # Patterns for all fields (adjust regex as needed for consistency)
         patterns = {
             "Sales": r"Sales\s+([\d,]+\.\d{2})",
             "Direct Costs": r"Direct Costs\s+([\d,]+\.\d{2})",
@@ -117,12 +116,12 @@ def parse_pdf(pdf_file):
         st.error(f"PDF Error: {str(e)}")
         return {}
 
-# Alerts with fix for KeyError
+# Alerts with KeyError fix
 def send_alerts(df):
     st.header("🔔 Alerts")
     threshold = st.number_input("Nett Profit Threshold", value=0.0, step=1000.0)
     if not df.empty:
-        if "Nett Profit" in df.columns:  # Check if column exists
+        if "Nett Profit" in df.columns:
             low_profit = df[df["Nett Profit"] < threshold]
             for _, row in low_profit.iterrows():
                 alert = f"⚠️ Low Nett Profit in {row['Month'].strftime('%Y-%m')}: {row['Nett Profit']:.2f}"
@@ -136,15 +135,15 @@ def send_alerts(df):
     else:
         st.success("No alerts.")
 
-# Main app with debug output
+# Main app
 def main_app():
     st.title("💰 Silver Spur Financial Dashboard")
 
     # Load data
     try:
         df = pd.read_csv(DATA_FILE, parse_dates=["Month"])
-        st.write("Debug: Loaded DataFrame columns:", df.columns.tolist())  # Debug output
-        st.write("Debug: First few rows:", df.head())  # Debug output
+        st.write("Debug: Loaded DataFrame columns:", df.columns.tolist())
+        st.write("Debug: First few rows:", df.head())
     except FileNotFoundError:
         df = pd.DataFrame(columns=["Month"] + FIELDS)
         st.write("Debug: Initialized empty DataFrame with columns:", df.columns.tolist())
@@ -176,7 +175,7 @@ def main_app():
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     df.to_csv(DATA_FILE, index=False)
                     st.success("✅ Processed!")
-                    st.write("Debug: Updated DataFrame columns after upload:", df.columns.tolist())  # Debug output
+                    st.write("Debug: Updated DataFrame columns after upload:", df.columns.tolist())
 
     # Alerts
     send_alerts(df)
@@ -184,21 +183,29 @@ def main_app():
     # Tabs
     tabs = st.tabs(["📈 Trends", "📊 Bars", "📅 Compare", "📋 Costs", "💹 Ratios", "🔗 Correlations", "📝 Entry", "📄 Data"])
 
-    # Trends
+    # Trends with ValueError fix
     with tabs[0]:
         if not df.empty:
             st.subheader("Trends")
             metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Nett Profit"])
-            fig = px.line(df, x="Month", y=metrics, title="Over Time")
-            st.plotly_chart(fig)
-    
+            if metrics and all(metric in df.columns for metric in metrics):
+                fig = px.line(df, x="Month", y=metrics, title="Over Time")
+                st.plotly_chart(fig)
+            else:
+                st.warning("Please select valid metrics that exist in the data.")
+        else:
+            st.warning("No data available. Upload a PDF or enter data manually.")
+
     # Bars
     with tabs[1]:
         if not df.empty:
             st.subheader("Monthly Breakdown")
             metrics = st.multiselect("Metrics", FIELDS, default=["Sales", "Expenses", "Nett Profit"])
-            fig = px.bar(df, x="Month", y=metrics, barmode="group", title="By Month")
-            st.plotly_chart(fig)
+            if metrics and all(metric in df.columns for metric in metrics):
+                fig = px.bar(df, x="Month", y=metrics, barmode="group", title="By Month")
+                st.plotly_chart(fig)
+            else:
+                st.warning("Please select valid metrics that exist in the data.")
     
     # Compare
     with tabs[2]:
