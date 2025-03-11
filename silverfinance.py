@@ -28,7 +28,7 @@ FIELDS = [
     "Donations", "Entertainment Costs", "General gas", "Interest paid",
     "Legal and Licence fees", "Printing, stationery and menus", "Repairs and maintenance",
     "Salaries and wages: -Management", "Salaries and wages: -Production staff (Incl Casuals)",
-    "Salaries and wages: -Waitrons (Incl Casuals)", "Salaries and wages: -Director",
+    "Salaries and wages: -“Waitrons (Incl Casuals)", "Salaries and wages: -Director",
     "Salaries and wages: -Company portion UIF and SDL", "Staff transport",
     "Staff uniforms", "Staff meals", "Staff medical", "Staff welfare",
     "Telephone expenses", "Waste removal", "Total fixed overheads",
@@ -66,41 +66,47 @@ def login_page():
             else:
                 st.error("Incorrect username or password.")
 
-# Updated PDF parsing
+# Updated PDF parsing for new structure
 def parse_pdf(pdf_file):
     try:
         reader = PdfReader(pdf_file)
         text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-        st.write("Debug: First 4000 characters of PDF text:", text[:4000])  # Increased for expense categories
+        st.write("Debug: Full PDF text:", text)  # Full text for debugging
         
         amounts = {}
         
-        # Summary fields
+        # Summary fields (new patterns for "R" and table format)
         summary_patterns = {
-            "Sales": r"Sales\s+([\d,]+\.\d{2})",
-            "Direct Costs": r"Direct Costs\s+([\d,]+\.\d{2})",
-            "Gross Profit": r"Gross Profit\s+([\d,]+\.\d{2})",
-            "Expenses": r"Expenses\s+([\d,]+\.\d{2})",
-            "Nett Profit /(Loss)": r"(-?[\d,]+\.\d{2})Nett Profit",
-            "Nett turnover": r"Nett Sales\s+[\d,]+\.\d{2}\s+([\d,]+\.\d{2})",
-            "Total cost of sales": r"([\d,]+\.\d{2})\s*\nEXPENSE CATEGORY",
-            "Gross turnover": r"Sales\s+([\d,]+\.\d{2})",  # Assuming same as Sales unless clarified
-            "Less VAT": r"Less Airtime\s+([\d,]+\.\d{2})"  # Assuming 0.00 unless full PDF shows VAT
+            "Gross turnover": r"Gross turnover\s*.*?R\s*([\d,]+\.\d{2})",
+            "Less VAT": r"Less VAT\s*.*?R\s*([\d,]+\.\d{2})",
+            "Nett turnover": r"Nett turnover\s*.*?R\s*([\d,]+\.\d{2})",
+            "Gross Profit": r"Gross profit\s*.*?R\s*([\d,]+\.\d{2})",
+            "Expenses": r"Expenses grand total\s*.*?R\s*([\d,]+\.\d{2})",
+            "Total cost of sales": r"Total cost of sales\s*.*?R\s*([\d,]+\.\d{2})",
+            "Nett Profit /(Loss)": r"Nett Profit /\(Loss\)\s*.*?R\s*(-?[\d,]+\.\d{2})"  # Assuming it’s present
         }
         
         for field, pattern in summary_patterns.items():
-            match = re.search(pattern, text)
+            match = re.search(pattern, text, re.DOTALL)
             if match:
                 value = match.group(1).replace(',', '')
                 amounts[field] = float(value)
         
-        # Cost categories
-        category_lines = re.findall(r"[a-z]{2}\s+(.+?)\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+(-?[\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})", text)
+        # Calculate Nett Profit if not explicitly provided
+        if "Gross Profit" in amounts and "Expenses" in amounts and "Nett Profit /(Loss)" not in amounts:
+            amounts["Nett Profit /(Loss)"] = amounts["Gross Profit"] - amounts["Expenses"]
+        
+        # Map "Sales" to "Nett turnover" for consistency with old PDF
+        if "Nett turnover" in amounts:
+            amounts["Sales"] = amounts["Nett turnover"]
+        
+        # Cost and expense categories (new pattern for "R" values)
+        category_lines = re.findall(r"^\s*([A-Za-z][A-Za-z\s:,-]+?)\s*.*?R\s*([\d,]+\.\d{2})", text, re.MULTILINE)
         field_map = {f.lower(): f for f in FIELDS}
-        for line in category_lines:
-            category = line[0].strip()
-            usage = line[7]
+        for category, value in category_lines:
+            category = category.strip()
             category_key = category.lower().replace('&', 'and')
+            # Specific mappings
             if "liq beer" in category_key:
                 category_key = "liquor - beer and cider"
             elif "liq spirits" in category_key:
@@ -109,19 +115,12 @@ def parse_pdf(pdf_file):
                 category_key = "liquor - wine"
             elif "ice cream" in category_key:
                 category_key = "ice-cream"
+            elif "credit card commision" in category_key:  # Typo in PDF
+                category_key = "credit card commission paid"
             if category_key in field_map:
-                amounts[field_map[category_key]] = float(usage.replace(',', ''))
+                amounts[field_map[category_key]] = float(value.replace(',', ''))
             else:
                 st.warning(f"Category '{category}' not mapped to FIELDS.")
-        
-        # Expense categories (basic example, refine with full text)
-        expense_lines = re.findall(r"([A-Za-z][A-Za-z\s:,-]+?)\s+([\d,]+\.\d{2})\s+[\d.]+\s*\n", text, re.MULTILINE)
-        for exp_category, value in expense_lines:
-            exp_key = exp_category.strip().lower()
-            if exp_key in field_map:
-                amounts[field_map[exp_key]] = float(value.replace(',', ''))
-            else:
-                st.warning(f"Expense '{exp_category}' not mapped to FIELDS.")
         
         extracted = len(amounts)
         total = len(FIELDS)
@@ -147,7 +146,7 @@ def send_alerts(df):
                 if alert not in st.session_state.alerts:
                     st.session_state.alerts.append(alert)
         else:
-            st.warning("Nett Profit /(Loss) column not found in data. Upload a PDF or enter data manually.")
+            st.warning("Nett Profit /(Loss) column not found in data.")
     if st.session_state.alerts:
         for alert in st.session_state.alerts:
             st.error(alert)
@@ -164,8 +163,6 @@ def main_app():
         df["Month"] = pd.to_datetime(df["Month"], errors="coerce").dt.normalize()
         df = df[["Month"] + [col for col in FIELDS if col in df.columns]]
         st.write("Debug: Loaded DataFrame columns:", df.columns.tolist())
-        st.write("Debug: First few rows:", df.head())
-        st.write("Debug: Month column type:", str(df["Month"].dtype))
     except FileNotFoundError:
         df = pd.DataFrame(columns=["Month"] + FIELDS)
         df["Month"] = pd.to_datetime(df["Month"], errors="coerce").dt.normalize()
@@ -174,7 +171,6 @@ def main_app():
         st.error(f"CSV Error: {e}")
         df = pd.DataFrame(columns=["Month"] + FIELDS)
         df["Month"] = pd.to_datetime(df["Month"], errors="coerce").dt.normalize()
-        st.write("Debug: Initialized empty DataFrame due to CSV error with columns:", df.columns.tolist())
 
     # Sidebar
     with st.sidebar:
@@ -197,7 +193,7 @@ def main_app():
                         df = df[df["Month"] != month]
                     new_row = {"Month": month, **data}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                    df = df[["Month"] + [col for col in FIELDS if col in df.columns]]
+                    df = df[["Month"] + [col for col in FIELDS if col in FIELDS]]
                     df["Month"] = pd.to_datetime(df["Month"], errors="coerce").dt.normalize()
                     df.to_csv(DATA_FILE, index=False)
                     st.success("✅ Processed!")
@@ -210,7 +206,6 @@ def main_app():
             df["Month"] = pd.to_datetime(df["Month"], errors="coerce").dt.normalize()
             df.to_csv(DATA_FILE, index=False)
             st.success("✅ All data cleared from CSV!")
-            st.write("Debug: DataFrame columns after clearing:", df.columns.tolist())
             st.rerun()
 
     # Alerts
@@ -255,9 +250,6 @@ def main_app():
     with tabs[2]:
         if not df.empty and len(df) > 0:
             st.subheader("Compare Months")
-            if df["Month"].dtype != "datetime64[ns]":
-                st.warning("Month column is not in datetime format. Converting...")
-                df["Month"] = pd.to_datetime(df["Month"], errors="coerce").dt.normalize()
             months = df["Month"].dt.strftime("%Y-%m").dropna().unique()
             if len(months) > 0:
                 col1, col2 = st.columns(2)
@@ -270,7 +262,6 @@ def main_app():
                     month2 = pd.to_datetime(month2_str + "-01").normalize()
                 fields = st.multiselect("Fields", FIELDS, default=["Sales", "Expenses", "Nett Profit /(Loss)"])
                 if fields and month1 != month2:
-                    df["Month"] = df["Month"].dt.normalize()
                     df_compare = df[df["Month"].isin([month1, month2])].set_index("Month")[fields]
                     if not df_compare.empty and len(df_compare) == 2:
                         df_compare.index = df_compare.index.strftime("%Y-%m")
