@@ -311,7 +311,7 @@ def main_app():
                 fig = px.imshow(corr_matrix, text_auto=True, title="Correlation Heatmap")
                 st.plotly_chart(fig)
                 for field in corr_fields:
-                    fig_scatter = px.scatter(df, x=field, y="Sales", trendline="ols"All Rights Reserved, title=f"{field} vs Sales")
+                    fig_scatter = px.scatter(df, x=field, y="Sales", trendline="ols", title=f"{field} vs Sales")
                     st.plotly_chart(fig_scatter)
     
     # Manual Entry
