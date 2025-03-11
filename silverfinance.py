@@ -28,7 +28,7 @@ FIELDS = [
     "Donations", "Entertainment Costs", "General gas", "Interest paid",
     "Legal and Licence fees", "Printing, stationery and menus", "Repairs and maintenance",
     "Salaries and wages: -Management", "Salaries and wages: -Production staff (Incl Casuals)",
-    "Salaries and wages: -“Waitrons (Incl Casuals)", "Salaries and wages: -Director",
+    "Salaries and wages: -Waitrons (Incl Casuals)", "Salaries and wages: -Director",
     "Salaries and wages: -Company portion UIF and SDL", "Staff transport",
     "Staff uniforms", "Staff meals", "Staff medical", "Staff welfare",
     "Telephone expenses", "Waste removal", "Total fixed overheads",
@@ -66,24 +66,24 @@ def login_page():
             else:
                 st.error("Incorrect username or password.")
 
-# Updated PDF parsing for new structure
+# Updated PDF parsing
 def parse_pdf(pdf_file):
     try:
         reader = PdfReader(pdf_file)
         text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-        st.write("Debug: Full PDF text:", text)  # Full text for debugging
+        st.write("Debug: Full PDF text:", text)
         
         amounts = {}
         
-        # Summary fields (new patterns for "R" and table format)
+        # Summary fields
         summary_patterns = {
             "Gross turnover": r"Gross turnover\s*.*?R\s*([\d,]+\.\d{2})",
             "Less VAT": r"Less VAT\s*.*?R\s*([\d,]+\.\d{2})",
             "Nett turnover": r"Nett turnover\s*.*?R\s*([\d,]+\.\d{2})",
             "Gross Profit": r"Gross profit\s*.*?R\s*([\d,]+\.\d{2})",
             "Expenses": r"Expenses grand total\s*.*?R\s*([\d,]+\.\d{2})",
-            "Total cost of sales": r"Total cost of sales\s*.*?R\s*([\d,]+\.\d{2})",
-            "Nett Profit /(Loss)": r"Nett Profit /\(Loss\)\s*.*?R\s*(-?[\d,]+\.\d{2})"  # Assuming it’s present
+            "Total cost of sales": r"Total cost of sales\s*([\d,]+\.\d{2})\s*R",
+            "Nett Profit /(Loss)": r"Nett Profit /\(Loss\)\s*(-?[\d,]+\.\d{2})"
         }
         
         for field, pattern in summary_patterns.items():
@@ -92,21 +92,20 @@ def parse_pdf(pdf_file):
                 value = match.group(1).replace(',', '')
                 amounts[field] = float(value)
         
-        # Calculate Nett Profit if not explicitly provided
+        # Calculate Nett Profit if not provided
         if "Gross Profit" in amounts and "Expenses" in amounts and "Nett Profit /(Loss)" not in amounts:
             amounts["Nett Profit /(Loss)"] = amounts["Gross Profit"] - amounts["Expenses"]
         
-        # Map "Sales" to "Nett turnover" for consistency with old PDF
+        # Map "Sales" to "Nett turnover"
         if "Nett turnover" in amounts:
             amounts["Sales"] = amounts["Nett turnover"]
         
-        # Cost and expense categories (new pattern for "R" values)
-        category_lines = re.findall(r"^\s*([A-Za-z][A-Za-z\s:,-]+?)\s*.*?R\s*([\d,]+\.\d{2})", text, re.MULTILINE)
+        # Cost and expense categories
+        category_lines = re.findall(r"([A-Za-z][A-Za-z\s:,-]+?)\s*([\d,]+\.\d{2})\s*R\s*[\d.]+\%", text)
         field_map = {f.lower(): f for f in FIELDS}
         for category, value in category_lines:
             category = category.strip()
             category_key = category.lower().replace('&', 'and')
-            # Specific mappings
             if "liq beer" in category_key:
                 category_key = "liquor - beer and cider"
             elif "liq spirits" in category_key:
@@ -115,7 +114,7 @@ def parse_pdf(pdf_file):
                 category_key = "liquor - wine"
             elif "ice cream" in category_key:
                 category_key = "ice-cream"
-            elif "credit card commision" in category_key:  # Typo in PDF
+            elif "credit card commision" in category_key:
                 category_key = "credit card commission paid"
             if category_key in field_map:
                 amounts[field_map[category_key]] = float(value.replace(',', ''))
@@ -193,7 +192,7 @@ def main_app():
                         df = df[df["Month"] != month]
                     new_row = {"Month": month, **data}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                    df = df[["Month"] + [col for col in FIELDS if col in FIELDS]]
+                    df = df[["Month"] + [col for col in FIELDS if col in df.columns]]
                     df["Month"] = pd.to_datetime(df["Month"], errors="coerce").dt.normalize()
                     df.to_csv(DATA_FILE, index=False)
                     st.success("✅ Processed!")
@@ -312,7 +311,7 @@ def main_app():
                 fig = px.imshow(corr_matrix, text_auto=True, title="Correlation Heatmap")
                 st.plotly_chart(fig)
                 for field in corr_fields:
-                    fig_scatter = px.scatter(df, x=field, y="Sales", trendline="ols", title=f"{field} vs Sales")
+                    fig_scatter = px.scatter(df, x=field, y="Sales", trendline="ols"All Rights Reserved, title=f"{field} vs Sales")
                     st.plotly_chart(fig_scatter)
     
     # Manual Entry
